@@ -1,0 +1,23 @@
+[package]
+name = "onesol"
+version = "0.1.0"
+authors = ["croath <croathliu@gmail.com>"]
+edition = "2018"
+exclude = ["js/**"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+solana-program = "1.6.7"
+thiserror = "1.0"
+num-derive = "0.3.3"
+num-traits = "0.2.14"
+
+[dev-dependencies]
+solana-sdk = "1.6.7"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
