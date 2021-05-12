@@ -10,6 +10,10 @@ pub enum OneSolError {
     /// Unknown error.
     #[error("Unknown error")]
     Unknown,
+
+    /// Invalid instruction number passed in.
+    #[error("Invalid instruction")]
+    InvalidInstruction,
 }
 impl From<OneSolError> for ProgramError {
     fn from(e: OneSolError) -> Self {
