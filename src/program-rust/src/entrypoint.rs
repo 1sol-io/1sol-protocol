@@ -3,7 +3,7 @@
 use crate::{error::OneSolError, processor::Processor};
 use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult,
-    pubkey::Pubkey, program_error::PrintProgramError
+    program_error::PrintProgramError, pubkey::Pubkey,
 };
 
 entrypoint!(process_instruction);
