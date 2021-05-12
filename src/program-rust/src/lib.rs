@@ -11,4 +11,3 @@ mod entrypoint;
 
 // export
 pub use solana_program;
-

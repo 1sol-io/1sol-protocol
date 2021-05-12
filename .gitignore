@@ -4,3 +4,5 @@
 /dist
 .env
 test-ledger/
+.DS_Store
+*.log

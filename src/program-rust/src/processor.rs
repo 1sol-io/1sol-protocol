@@ -1,13 +1,9 @@
 //! Program state processor
-use crate::{
-    error::OneSolError,
-};
+use crate::error::OneSolError;
 use num_traits::FromPrimitive;
 use solana_program::{
-    entrypoint::ProgramResult,
-    msg, pubkey::Pubkey, account_info::AccountInfo,
-    program_error::{PrintProgramError},
-    decode_error::DecodeError,
+    account_info::AccountInfo, decode_error::DecodeError, entrypoint::ProgramResult, msg,
+    program_error::PrintProgramError, pubkey::Pubkey,
 };
 
 /// Program state handler.
@@ -26,7 +22,7 @@ impl PrintProgramError for OneSolError {
         E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
     {
         match self {
-            OneSolError::Unknown => msg!("Error: Unknown")
+            OneSolError::Unknown => msg!("Error: Unknown"),
         }
     }
 }
