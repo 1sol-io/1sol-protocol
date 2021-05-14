@@ -7,13 +7,14 @@ use crate::{
 };
 use num_traits::FromPrimitive;
 use solana_program::{
-    account_info::{AccountInfo, next_account_info},
-    decode_error::DecodeError, 
-    entrypoint::ProgramResult, 
-    msg, 
-    program::invoke, 
-    program_error::PrintProgramError, 
-    pubkey::Pubkey};
+    account_info::{next_account_info, AccountInfo},
+    decode_error::DecodeError,
+    entrypoint::ProgramResult,
+    msg,
+    program::invoke,
+    program_error::PrintProgramError,
+    pubkey::Pubkey,
+};
 
 /// Program state handler.
 pub struct Processor {}
@@ -59,24 +60,25 @@ impl Processor {
             host_fee_pubkey = Some(host_fee_account_info.key);
         }
         // TODO do swap here
-        let instruction = token_swap::Swap{
+        let instruction = token_swap::Swap {
             amount_in: amount_in,
-            minimum_amount_out: minimum_amount_out
+            minimum_amount_out: minimum_amount_out,
         };
         let swap = token_swap::swap(
-            program_id, 
-            token_program_info.key, 
-            swap_info.key, 
-            authority_info.key, 
-            user_transfer_authority_info.key, 
-            source_info.key, 
-            swap_source_info.key, 
-            swap_destination_info.key, 
-            destination_info.key, 
-            pool_mint_info.key, 
-            pool_fee_account_info.key, 
-            host_fee_pubkey, 
-            instruction)?;
+            program_id,
+            token_program_info.key,
+            swap_info.key,
+            authority_info.key,
+            user_transfer_authority_info.key,
+            source_info.key,
+            swap_source_info.key,
+            swap_destination_info.key,
+            destination_info.key,
+            pool_mint_info.key,
+            pool_fee_account_info.key,
+            host_fee_pubkey,
+            instruction,
+        )?;
         invoke(&swap, accounts)
     }
 }
