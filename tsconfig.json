@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+      "target": "esnext",
+      "allowJs": true,
+      "skipLibCheck": true,
+      "declaration": true,
+      "declarationDir": "./src/js/dist",
+      "outDir": "./src/js/dist",
+      "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "strict": true,
+      "forceConsistentCasingInFileNames": true,
+      "module": "commonjs",
+      "moduleResolution": "node",
+      "resolveJsonModule": true,
+      "isolatedModules": true,
+      "baseUrl": "./src/js/src",
+      "noFallthroughCasesInSwitch": true,
+      "noImplicitReturns": true
+    },
+    "include": ["./src/js/src/**/*"]
+}
