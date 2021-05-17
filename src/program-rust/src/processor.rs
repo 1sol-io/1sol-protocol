@@ -15,9 +15,16 @@ use solana_program::{
     program_error::PrintProgramError,
     pubkey::Pubkey,
 };
+use std::str::FromStr;
 
 /// Program state handler.
 pub struct Processor {}
+
+#[cfg(debug_assertions)]
+const TOKEN_SWAP_ADDRESS: &str = &"GSKD4BfZBFzCtGzZ7qEgPgr4UgkxiCK3bgTV9PQFRMab";
+#[cfg(not(debug_assertions))]
+const TOKEN_SWAP_ADDRESS: &str = &"SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8";
+
 impl Processor {
     /// Processes an [Instruction](enum.Instruction.html).
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
@@ -64,8 +71,9 @@ impl Processor {
             amount_in: amount_in,
             minimum_amount_out: minimum_amount_out,
         };
+        let token_swap_program_id = &Pubkey::from_str(TOKEN_SWAP_ADDRESS).unwrap();
         let swap = token_swap::swap(
-            program_id,
+            token_swap_program_id,
             token_program_info.key,
             swap_info.key,
             authority_info.key,

@@ -10,7 +10,8 @@
     "test:program-rust": "cargo test-bpf --manifest-path=./src/program-rust/Cargo.toml",
     "rustfmt:program-rust": "pushd src/program-rust && cargo fmt --all && popd",
     "pretty": "prettier --write '{,src/**/}*.ts'",
-    "postinstall": "cargo update --manifest-path=src/program-rust/Cargo.toml"
+    "postinstall": "cargo update --manifest-path=src/program-rust/Cargo.toml",
+    "cluster:1soldev": "cp cluster-1soldev.env .env"
   },
   "repository": {
     "type": "git",
