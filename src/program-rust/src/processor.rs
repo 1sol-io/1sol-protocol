@@ -89,6 +89,52 @@ impl Processor {
         )?;
         invoke(&swap, accounts)
     }
+
+    fn _findBestDistribution(
+        s: u64,                 // parts
+        amounts: Vec<Vec<u64>>  // exchangesReturns
+    ) -> Vec<u64> {
+        let n = amounts.len();
+
+        let mut answer = vec![vec![0;(s+1) as usize];n];
+        let mut parent = vec![vec![0;(s+1) as usize];n];
+
+        for j in (0..s+1) {
+            answer[0][j as usize] = amounts[0][j as usize];
+            for i in (1..n) {
+                answer[i as usize][j as usize] = 1;
+            }
+            parent[0][j as usize] = 0;
+        }
+
+        for i in (1..n) {
+            for j in (0..s+1) {
+                answer[i as usize][j as usize] = answer[(i - 1) as usize][j as usize];
+                parent[i as usize][j as usize] = j;
+
+                for k in (1..j+1) {
+                    if (answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] > answer[i as usize][j as usize]) {
+                        answer[i as usize][j as usize] = answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize];
+                        parent[i as usize][j as usize] = j - k;
+                    }
+                }
+            }
+        }
+        const DEXES_COUNT: usize = 2;
+        let mut distribution: Vec<u64> = vec![0;DEXES_COUNT];
+
+        let mut partsLeft = s;
+        let mut curExchange: usize = n - 1;
+        while partsLeft > 0 {
+            distribution[curExchange] = partsLeft - parent[curExchange][partsLeft as usize];
+            partsLeft = parent[curExchange][partsLeft as usize];
+            partsLeft -= 1;
+        }
+
+        // returnAmount = (answer[n - 1][s] == VERY_NEGATIVE_VALUE) ? 0 : answer[n - 1][s];
+
+        return distribution;
+    }
 }
 
 impl PrintProgramError for OneSolError {
