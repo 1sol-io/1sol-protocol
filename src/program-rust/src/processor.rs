@@ -91,10 +91,11 @@ impl Processor {
         invoke(&swap, accounts)
     }
 
+    /// https://github.com/1inch/1inchProtocol/blob/master/contracts/OneSplitBase.sol\#L139
     fn _findBestDistribution(
         s: u64,                 // parts
         amounts: Vec<Vec<u64>>  // exchangesReturns
-    ) -> (i64, Vec<u64>) {
+    ) -> Vec<u64> {
         let n = amounts.len();
 
         let mut answer:Vec<Vec<i64>> = vec![vec![MIN;(s+1) as usize];n];
@@ -132,9 +133,10 @@ impl Processor {
             partsLeft -= 1;
         }
 
-        let returnAmount = if (answer[(n - 1) as usize][s as usize] == MIN) { 0 } else { answer[(n - 1) as usize][s as usize] };
+        // let returnAmount = if (answer[(n - 1) as usize][s as usize] == MIN) { 0 } else { answer[(n - 1) as usize][s as usize] as u64 };
 
-        return (returnAmount, distribution);
+        // return (returnAmount, distribution);
+        return distribution;
     }
 }
 
