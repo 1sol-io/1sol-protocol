@@ -102,10 +102,10 @@ impl Processor {
 
         for j in (0..s+1) {
             answer[0][j as usize] = amounts[0][j as usize] as i64;
-            for i in (1..n) {
-                answer[i as usize][j as usize] = MIN;
-            }
-            parent[0][j as usize] = 0;
+            // for i in (1..n) {
+            //     answer[i as usize][j as usize] = MIN;
+            // }
+            // parent[0][j as usize] = 0;
         }
 
         for i in (1..n) {
