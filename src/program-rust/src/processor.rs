@@ -16,6 +16,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::str::FromStr;
+use core::i64::MIN;
 
 /// Program state handler.
 pub struct Processor {}
@@ -93,16 +94,16 @@ impl Processor {
     fn _findBestDistribution(
         s: u64,                 // parts
         amounts: Vec<Vec<u64>>  // exchangesReturns
-    ) -> Vec<u64> {
+    ) -> (i64, Vec<u64>) {
         let n = amounts.len();
 
-        let mut answer = vec![vec![0;(s+1) as usize];n];
+        let mut answer:Vec<Vec<i64>> = vec![vec![MIN;(s+1) as usize];n];
         let mut parent = vec![vec![0;(s+1) as usize];n];
 
         for j in (0..s+1) {
-            answer[0][j as usize] = amounts[0][j as usize];
+            answer[0][j as usize] = amounts[0][j as usize] as i64;
             for i in (1..n) {
-                answer[i as usize][j as usize] = 1;
+                answer[i as usize][j as usize] = MIN;
             }
             parent[0][j as usize] = 0;
         }
@@ -113,8 +114,8 @@ impl Processor {
                 parent[i as usize][j as usize] = j;
 
                 for k in (1..j+1) {
-                    if (answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] > answer[i as usize][j as usize]) {
-                        answer[i as usize][j as usize] = answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize];
+                    if (answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] as i64 > answer[i as usize][j as usize]) {
+                        answer[i as usize][j as usize] = answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] as i64;
                         parent[i as usize][j as usize] = j - k;
                     }
                 }
@@ -131,9 +132,9 @@ impl Processor {
             partsLeft -= 1;
         }
 
-        // returnAmount = (answer[n - 1][s] == VERY_NEGATIVE_VALUE) ? 0 : answer[n - 1][s];
+        let returnAmount = if (answer[(n - 1) as usize][s as usize] == MIN) { 0 } else { answer[(n - 1) as usize][s as usize] };
 
-        return distribution;
+        return (returnAmount, distribution);
     }
 }
 
