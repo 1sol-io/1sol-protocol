@@ -79,6 +79,7 @@ impl Processor {
         let pool_mint_info = next_account_info(account_info_iter)?;
         let pool_fee_account_info = next_account_info(account_info_iter)?;
         let token_program_info = next_account_info(account_info_iter)?;
+        let token_swap_program_info = next_account_info(account_info_iter)?;
         let mut host_fee_pubkey: Option<&Pubkey> = None;
         let host_fee_account_info = next_account_info(account_info_iter);
         if let Ok(_host_fee_account_info) = host_fee_account_info {
@@ -100,7 +101,7 @@ impl Processor {
         
         // Swap OnesolA -> OnesolB
         msg!("swap onesolA -> onesolB using token-swap");
-        let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
+        // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
         // TODO do swap here
         let instruction = token_swap::Swap {
             amount_in: amount_in,
@@ -110,7 +111,7 @@ impl Processor {
         // let (authority_key, _nonce) = Pubkey::find_program_address(&[&swap_key.to_bytes()], &token_swap_program_id);
 
         let swap = token_swap::swap(
-            &token_swap_program_id,
+            token_swap_program_info.key,
             token_program_info.key,
             swap_info.key,
             swap_authority_info.key,
@@ -142,7 +143,7 @@ impl Processor {
         // invoke tokenswap
         msg!("swap onesolA -> onesolB invoke token_swap {}, {}", swap.accounts.len(), swap_accounts.len());
         invoke(&swap, &swap_accounts[..])?;
-        // invoke_signed(&swap, &swap_accounts[..], &[&[]])
+        // invoke_signed(&swap, &swap_accounts[..], &[&[swap_info]])
 
         // Transfer OnesolB -> AliceB
         // TODO 这里应该确定一下 amout_out

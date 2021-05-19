@@ -318,6 +318,7 @@ export class OneSolProtocol{
           hostFeeAccount,
           this.protocolProgramId,
           this.tokenProgramId,
+          this.tokenSwapProgramId,
           amountIn,
           minimumAmountOut,
         ),
@@ -344,6 +345,7 @@ export class OneSolProtocol{
     hostFeeAccount: PublicKey | null,
     protocolProgramId: PublicKey,
     tokenProgramId: PublicKey,
+    tokenSwapProgramId: PublicKey,
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
   ): TransactionInstruction {
@@ -378,6 +380,7 @@ export class OneSolProtocol{
       {pubkey: poolMint, isSigner: false, isWritable: true},
       {pubkey: feeAccount, isSigner: false, isWritable: true},
       {pubkey: tokenProgramId, isSigner: false, isWritable: false},
+      {pubkey: tokenSwapProgramId, isSigner: false, isWritable: false},
     ];
     if (hostFeeAccount !== null) {
       keys.push({pubkey: hostFeeAccount, isSigner: false, isWritable: true});

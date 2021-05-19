@@ -197,46 +197,14 @@ export async function createTokenSwap(): Promise<void> {
       ONESOL_PROTOCOL_PROGRAM_ID,
     );
 
-
-    const aliceTokenSwapAccount = new Account();
-    let aliceTokenSwapAuthority, _nonce2
-  
-    [aliceTokenSwapAuthority, _nonce2] = await PublicKey.findProgramAddress(
-      [aliceTokenSwapAccount.publicKey.toBuffer()],
-      TOKEN_SWAP_PROGRAM_ID,
-    );
-
-    let transaction;
-    // Allocate memory for the account
-    const balanceNeeded = await TokenSwap.getMinBalanceRentForExemptTokenSwap(
-      connection,
-    );
-    transaction = new Transaction();
-    transaction.add(
-      SystemProgram.createAccount({
-        fromPubkey: swapPayer.publicKey,
-        newAccountPubkey: aliceTokenSwapAccount.publicKey,
-        lamports: balanceNeeded,
-        space: TokenSwapLayout.span,
-        programId: TOKEN_SWAP_PROGRAM_ID,
-      }),
-    );
-    await sendAndConfirmTransaction(
-      'createAccount and InitializeSwap',
-      connection,
-      transaction,
-      swapPayer,
-      aliceTokenSwapAccount,
-    );
-
     console.log('creating onesolprotocol');
     onesolProtocol = await OneSolProtocol.createOneSolProtocol(
       connection,
       swapPayer,
       onesolProtocolAccount,
-      aliceTokenSwapAccount,
+      tokenSwapAccount,
       onesolProtocolAuthority,
-      aliceTokenSwapAuthority,
+      authority,
       tokenAccountA,
       tokenAccountB,
       tokenPool.publicKey,
@@ -286,6 +254,19 @@ export async function swap(): Promise<void> {
   console.log('Swapping');
   // TODO use onesol swap
 
+  // console.log('tokenSwap swap');
+  // await tokenSwap.swap(
+  //   userAccountA,
+  //   tokenAccountA,
+  //   tokenAccountB,
+  //   userAccountB,
+  //   poolAccount,
+  //   userTransferAuthority,
+  //   SWAP_AMOUNT_IN,
+  //   SWAP_AMOUNT_OUT, 
+  // );
+
+  console.log('onesol swap');
   await onesolProtocol.swap(
     userAccountA,
     onesolAccountA,
