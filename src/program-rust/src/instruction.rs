@@ -23,16 +23,7 @@ pub struct Swap {
 pub enum OneSolInstruction {
     ///   Initializes
     ///
-    ///   0. `[writable, signer]` New Token-swap to create.
-    ///   1. `[]` swap authority derived from `create_program_address(&[Token-swap account])`
-    ///   2. `[]` token_a Account. Must be non zero, owned by swap authority.
-    ///   3. `[]` token_b Account. Must be non zero, owned by swap authority.
-    ///   4. `[writable]` Pool Token Mint. Must be empty, owned by swap authority.
-    ///   5. `[]` Pool Token Account to deposit trading and withdraw fees.
-    ///   Must be empty, not owned by swap authority
-    ///   6. `[writable]` Pool Token Account to deposit the initial pool token
-    ///   supply.  Must be empty, not owned by swap authority.
-    ///   7. '[]` Token program id
+    /// Do nothing
     Initialize(Initialize),
 
     /// Swap the tokens in the pool.
