@@ -28,18 +28,23 @@ pub enum OneSolInstruction {
 
     /// Swap the tokens in the pool.
     ///
-    /// 0. `[]` Token-swap
-    /// 1. `[]` swap authority
-    /// 2. `[]` user transfer authority
-    ///   3. `[writable]` token_(A|B) SOURCE Account, amount is transferable by user transfer authority,
-    ///   4. `[writable]` token_(A|B) Base Account to swap INTO.  Must be the SOURCE token.
-    ///   5. `[writable]` token_(A|B) Base Account to swap FROM.  Must be the DESTINATION token.
-    ///   6. `[writable]` token_(A|B) DESTINATION Account assigned to USER as the owner.
+    ///   0. `[]` onesol-protocol account
+    ///   1. `[]` Token-swap
+    ///   2. `[]` onesol authority
+    ///   3. `[]` swap authority
+    ///   4. `[]` user transfer authority
+    ///   5. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
+    ///   6. `[writable]` token_A onesol SOURCE Account, amount is transferable by user transfer authority,
+    ///   7. `[writable]` token_A Base Account to swap INTO.  Must be the SOURCE token.
+    ///   8. `[writable]` token_B Base Account to swap FROM.  Must be the DESTINATION token.
+    ///   9. `[writable]` token_B onesol Account to swap FROM.  Must be the DESTINATION token.
+    ///   9. `[writable]` token_B DESTINATION Account to swap FROM.  Must be the DESTINATION token.
     ///   7. `[writable]` Pool token mint, to generate trading fees
     ///   8. `[writable]` Fee account, to receive trading fees
     ///   9. '[]` Token program id
     ///   10 `[optional, writable]` Host fee account to receive additional trading fees
     Swap(Swap),
+
 }
 
 impl OneSolInstruction {

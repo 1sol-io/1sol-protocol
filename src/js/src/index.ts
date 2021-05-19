@@ -18,7 +18,7 @@ import {loadAccount} from './util/account';
 export const ONESOL_PROTOCOL_PROGRAM_ID: PublicKey = new PublicKey(
   // 'SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8',
   // 'GSKD4BfZBFzCtGzZ7qEgPgr4UgkxiCK3bgTV9PQFRMab',
-  'Dm4bCGrSQ4rKLn2f6SJ46BbHdaexFMjyrKy25qxAmZ7P',
+  '4GnKgDtXinfwxXJvsaZRUVShtd27pNRXTgLZJqmoVA45',
 );
 
 /**
@@ -64,19 +64,7 @@ export const OneSolProtocolLayout = BufferLayout.struct([
   Layout.publicKey('tokenAccountA'),
   Layout.publicKey('tokenAccountB'),
   Layout.publicKey('tokenPool'),
-  // Layout.publicKey('mintA'),
-  // Layout.publicKey('mintB'),
   Layout.publicKey('feeAccount'),
-  // Layout.uint64('tradeFeeNumerator'),
-  // Layout.uint64('tradeFeeDenominator'),
-  // Layout.uint64('ownerTradeFeeNumerator'),
-  // Layout.uint64('ownerTradeFeeDenominator'),
-  // Layout.uint64('ownerWithdrawFeeNumerator'),
-  // Layout.uint64('ownerWithdrawFeeDenominator'),
-  // Layout.uint64('hostFeeNumerator'),
-  // Layout.uint64('hostFeeDenominator'),
-  // BufferLayout.u8('curveType'),
-  // BufferLayout.blob(32, 'curveParameters'),
 ]);
 
 // export const CurveType = Object.freeze({
@@ -93,6 +81,7 @@ export class OneSolProtocol{
    * Create a Token object attached to the specific token
    *
    * @param connection The connection to use
+   * @param onesolProtocol The onesol protocol account
    * @param tokenSwap The token swap account
    * @param swapProgramId The program ID of the token-swap program
    * @param tokenProgramId The program ID of the token program
@@ -100,62 +89,33 @@ export class OneSolProtocol{
    * @param authority The authority over the swap and accounts
    * @param tokenAccountA The token swap's Token A account
    * @param tokenAccountB The token swap's Token B account
-  //  * @param mintA The mint of Token A
-  //  * @param mintB The mint of Token B
-  //  * @param tradeFeeNumerator The trade fee numerator
-  //  * @param tradeFeeDenominator The trade fee denominator
-  //  * @param ownerTradeFeeNumerator The owner trade fee numerator
-  //  * @param ownerTradeFeeDenominator The owner trade fee denominator
-  //  * @param ownerWithdrawFeeNumerator The owner withdraw fee numerator
-  //  * @param ownerWithdrawFeeDenominator The owner withdraw fee denominator
-  //  * @param hostFeeNumerator The host fee numerator
-  //  * @param hostFeeDenominator The host fee denominator
-  //  * @param curveType The curve type
    * @param payer Pays for the transaction
    */
   constructor(
     private connection: Connection,
+    public onesolProtocol: PublicKey,
     public tokenSwap: PublicKey,
     public protocolProgramId: PublicKey,
     public tokenProgramId: PublicKey,
     public poolToken: PublicKey,
     public feeAccount: PublicKey,
-    public authority: PublicKey,
+    public onesolAuthority: PublicKey,
+    public tokenSwapAuthority: PublicKey,
     public tokenAccountA: PublicKey,
     public tokenAccountB: PublicKey,
-    // public mintA: PublicKey,
-    // public mintB: PublicKey,
-    // public tradeFeeNumerator: Numberu64,
-    // public tradeFeeDenominator: Numberu64,
-    // public ownerTradeFeeNumerator: Numberu64,
-    // public ownerTradeFeeDenominator: Numberu64,
-    // public ownerWithdrawFeeNumerator: Numberu64,
-    // public ownerWithdrawFeeDenominator: Numberu64,
-    // public hostFeeNumerator: Numberu64,
-    // public hostFeeDenominator: Numberu64,
-    // public curveType: number,
     public payer: Account,
   ) {
     this.connection = connection;
-    this.tokenSwap = tokenSwap;
+    this.onesolProtocol = onesolProtocol
+    this.tokenSwap = tokenSwap
     this.protocolProgramId = protocolProgramId;
     this.tokenProgramId = tokenProgramId;
     this.poolToken = poolToken;
     this.feeAccount = feeAccount;
-    this.authority = authority;
+    this.onesolAuthority = onesolAuthority;
+    this.tokenSwapAuthority = tokenSwapAuthority;
     this.tokenAccountA = tokenAccountA;
     this.tokenAccountB = tokenAccountB;
-    // this.mintA = mintA;
-    // this.mintB = mintB;
-    // this.tradeFeeNumerator = tradeFeeNumerator;
-    // this.tradeFeeDenominator = tradeFeeDenominator;
-    // this.ownerTradeFeeNumerator = ownerTradeFeeNumerator;
-    // this.ownerTradeFeeDenominator = ownerTradeFeeDenominator;
-    // this.ownerWithdrawFeeNumerator = ownerWithdrawFeeNumerator;
-    // this.ownerWithdrawFeeDenominator = ownerWithdrawFeeDenominator;
-    // this.hostFeeNumerator = hostFeeNumerator;
-    // this.hostFeeDenominator = hostFeeDenominator;
-    // this.curveType = curveType;
     this.payer = payer;
   }
 
@@ -172,153 +132,42 @@ export class OneSolProtocol{
     );
   }
 
-  // static createInitSwapInstruction(
-  //   tokenSwapAccount: Account,
-  //   authority: PublicKey,
-  //   tokenAccountA: PublicKey,
-  //   tokenAccountB: PublicKey,
-  //   tokenPool: PublicKey,
-  //   feeAccount: PublicKey,
-  //   tokenAccountPool: PublicKey,
-  //   tokenProgramId: PublicKey,
-  //   swapProgramId: PublicKey,
-  //   nonce: number,
-  //   tradeFeeNumerator: number,
-  //   tradeFeeDenominator: number,
-  //   ownerTradeFeeNumerator: number,
-  //   ownerTradeFeeDenominator: number,
-  //   ownerWithdrawFeeNumerator: number,
-  //   ownerWithdrawFeeDenominator: number,
-  //   hostFeeNumerator: number,
-  //   hostFeeDenominator: number,
-  //   curveType: number,
-  // ): TransactionInstruction {
-  //   const keys = [
-  //     {pubkey: tokenSwapAccount.publicKey, isSigner: false, isWritable: true},
-  //     {pubkey: authority, isSigner: false, isWritable: false},
-  //     {pubkey: tokenAccountA, isSigner: false, isWritable: false},
-  //     {pubkey: tokenAccountB, isSigner: false, isWritable: false},
-  //     {pubkey: tokenPool, isSigner: false, isWritable: true},
-  //     {pubkey: feeAccount, isSigner: false, isWritable: false},
-  //     {pubkey: tokenAccountPool, isSigner: false, isWritable: true},
-  //     {pubkey: tokenProgramId, isSigner: false, isWritable: false},
-  //   ];
-  //   const commandDataLayout = BufferLayout.struct([
-  //     BufferLayout.u8('instruction'),
-  //     BufferLayout.u8('nonce'),
-  //     BufferLayout.nu64('tradeFeeNumerator'),
-  //     BufferLayout.nu64('tradeFeeDenominator'),
-  //     BufferLayout.nu64('ownerTradeFeeNumerator'),
-  //     BufferLayout.nu64('ownerTradeFeeDenominator'),
-  //     BufferLayout.nu64('ownerWithdrawFeeNumerator'),
-  //     BufferLayout.nu64('ownerWithdrawFeeDenominator'),
-  //     BufferLayout.nu64('hostFeeNumerator'),
-  //     BufferLayout.nu64('hostFeeDenominator'),
-  //     BufferLayout.u8('curveType'),
-  //     BufferLayout.blob(32, 'curveParameters'),
-  //   ]);
-  //   let data = Buffer.alloc(1024);
-  //   {
-  //     const encodeLength = commandDataLayout.encode(
-  //       {
-  //         instruction: 0, // InitializeSwap instruction
-  //         nonce,
-  //         tradeFeeNumerator,
-  //         tradeFeeDenominator,
-  //         ownerTradeFeeNumerator,
-  //         ownerTradeFeeDenominator,
-  //         ownerWithdrawFeeNumerator,
-  //         ownerWithdrawFeeDenominator,
-  //         hostFeeNumerator,
-  //         hostFeeDenominator,
-  //         curveType,
-  //       },
-  //       data,
-  //     );
-  //     data = data.slice(0, encodeLength);
+  // static async loadOneSolProtocol(
+  //   connection: Connection,
+  //   address: PublicKey,
+  //   programId: PublicKey,
+  //   payer: Account,
+  // ): Promise<OneSolProtocol> {
+  //   const data = await loadAccount(connection, address, programId);
+  //   const onesolProtocolData = OneSolProtocolLayout.decode(data);
+  //   if (!onesolProtocolData.isInitialized) {
+  //     throw new Error(`Invalid token swap state`);
   //   }
-  //   return new TransactionInstruction({
-  //     keys,
-  //     programId: swapProgramId,
-  //     data,
-  //   });
+
+  //   const [authority] = await PublicKey.findProgramAddress(
+  //     [address.toBuffer()],
+  //     programId,
+  //   );
+
+  //   const poolToken = new PublicKey(onesolProtocolData.tokenPool);
+  //   const feeAccount = new PublicKey(onesolProtocolData.feeAccount);
+  //   const tokenAccountA = new PublicKey(onesolProtocolData.tokenAccountA);
+  //   const tokenAccountB = new PublicKey(onesolProtocolData.tokenAccountB);
+  //   const tokenProgramId = new PublicKey(onesolProtocolData.tokenProgramId);
+
+  //   return new OneSolProtocol(
+  //     connection,
+  //     address,
+  //     programId,
+  //     tokenProgramId,
+  //     poolToken,
+  //     feeAccount,
+  //     authority,
+  //     tokenAccountA,
+  //     tokenAccountB,
+  //     payer,
+  //   );
   // }
-
-  static async loadOneSolProtocol(
-    connection: Connection,
-    address: PublicKey,
-    programId: PublicKey,
-    payer: Account,
-  ): Promise<OneSolProtocol> {
-    const data = await loadAccount(connection, address, programId);
-    const tokenSwapData = OneSolProtocolLayout.decode(data);
-    if (!tokenSwapData.isInitialized) {
-      throw new Error(`Invalid token swap state`);
-    }
-
-    const [authority] = await PublicKey.findProgramAddress(
-      [address.toBuffer()],
-      programId,
-    );
-
-    const poolToken = new PublicKey(tokenSwapData.tokenPool);
-    const feeAccount = new PublicKey(tokenSwapData.feeAccount);
-    const tokenAccountA = new PublicKey(tokenSwapData.tokenAccountA);
-    const tokenAccountB = new PublicKey(tokenSwapData.tokenAccountB);
-    // const mintA = new PublicKey(tokenSwapData.mintA);
-    // const mintB = new PublicKey(tokenSwapData.mintB);
-    const tokenProgramId = new PublicKey(tokenSwapData.tokenProgramId);
-
-    // const tradeFeeNumerator = Numberu64.fromBuffer(
-    //   tokenSwapData.tradeFeeNumerator,
-    // );
-    // const tradeFeeDenominator = Numberu64.fromBuffer(
-    //   tokenSwapData.tradeFeeDenominator,
-    // );
-    // const ownerTradeFeeNumerator = Numberu64.fromBuffer(
-    //   tokenSwapData.ownerTradeFeeNumerator,
-    // );
-    // const ownerTradeFeeDenominator = Numberu64.fromBuffer(
-    //   tokenSwapData.ownerTradeFeeDenominator,
-    // );
-    // const ownerWithdrawFeeNumerator = Numberu64.fromBuffer(
-    //   tokenSwapData.ownerWithdrawFeeNumerator,
-    // );
-    // const ownerWithdrawFeeDenominator = Numberu64.fromBuffer(
-    //   tokenSwapData.ownerWithdrawFeeDenominator,
-    // );
-    // const hostFeeNumerator = Numberu64.fromBuffer(
-    //   tokenSwapData.hostFeeNumerator,
-    // );
-    // const hostFeeDenominator = Numberu64.fromBuffer(
-    //   tokenSwapData.hostFeeDenominator,
-    // );
-    // const curveType = tokenSwapData.curveType;
-
-    return new OneSolProtocol(
-      connection,
-      address,
-      programId,
-      tokenProgramId,
-      poolToken,
-      feeAccount,
-      authority,
-      tokenAccountA,
-      tokenAccountB,
-      // mintA,
-      // mintB,
-      // tradeFeeNumerator,
-      // tradeFeeDenominator,
-      // ownerTradeFeeNumerator,
-      // ownerTradeFeeDenominator,
-      // ownerWithdrawFeeNumerator,
-      // ownerWithdrawFeeDenominator,
-      // hostFeeNumerator,
-      // hostFeeDenominator,
-      // curveType,
-      payer,
-    );
-  }
 
   /**
    * Create a new OneSol Swap
@@ -341,50 +190,31 @@ export class OneSolProtocol{
   static async createOneSolProtocol(
     connection: Connection,
     payer: Account,
+    onesolProtocolAccount: Account,
     tokenSwapAccount: Account,
-    authority: PublicKey,
+    onesolAuthority: PublicKey,
+    tokenSwapAuthority: PublicKey,
     tokenAccountA: PublicKey,
     tokenAccountB: PublicKey,
     poolToken: PublicKey,
-    // mintA: PublicKey,
-    // mintB: PublicKey,
     feeAccount: PublicKey,
-    // tokenAccountPool: PublicKey,
     protocolProgramId: PublicKey,
     tokenProgramId: PublicKey,
-    // nonce: number,
-    // tradeFeeNumerator: number,
-    // tradeFeeDenominator: number,
-    // ownerTradeFeeNumerator: number,
-    // ownerTradeFeeDenominator: number,
-    // ownerWithdrawFeeNumerator: number,
-    // ownerWithdrawFeeDenominator: number,
-    // hostFeeNumerator: number,
-    // hostFeeDenominator: number,
-    // curveType: number,
+
   ): Promise<OneSolProtocol> {
     let transaction;
     const onesolSwap = new OneSolProtocol(
       connection,
+      onesolProtocolAccount.publicKey,
       tokenSwapAccount.publicKey,
       protocolProgramId,
       tokenProgramId,
       poolToken,
       feeAccount,
-      authority,
+      onesolAuthority,
+      tokenSwapAuthority,
       tokenAccountA,
       tokenAccountB,
-      // mintA,
-      // mintB,
-      // new Numberu64(tradeFeeNumerator),
-      // new Numberu64(tradeFeeDenominator),
-      // new Numberu64(ownerTradeFeeNumerator),
-      // new Numberu64(ownerTradeFeeDenominator),
-      // new Numberu64(ownerWithdrawFeeNumerator),
-      // new Numberu64(ownerWithdrawFeeDenominator),
-      // new Numberu64(hostFeeNumerator),
-      // new Numberu64(hostFeeDenominator),
-      // curveType,
       payer,
     );
 
@@ -392,47 +222,26 @@ export class OneSolProtocol{
     const balanceNeeded = await OneSolProtocol.getMinBalanceRentForExemptTokenSwap(
       connection,
     );
+    console.log("balanceNeeded: " + balanceNeeded);
     transaction = new Transaction();
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
-        newAccountPubkey: tokenSwapAccount.publicKey,
+        newAccountPubkey: onesolProtocolAccount.publicKey,
         lamports: balanceNeeded,
         space: OneSolProtocolLayout.span,
         programId: protocolProgramId,
       }),
     );
 
-    // const instruction = OneSolSwap.createInitSwapInstruction(
-    //   tokenSwapAccount,
-    //   authority,
-    //   tokenAccountA,
-    //   tokenAccountB,
-    //   poolToken,
-    //   feeAccount,
-    //   tokenAccountPool,
-    //   tokenProgramId,
-    //   swapProgramId,
-    //   nonce,
-    //   tradeFeeNumerator,
-    //   tradeFeeDenominator,
-    //   ownerTradeFeeNumerator,
-    //   ownerTradeFeeDenominator,
-    //   ownerWithdrawFeeNumerator,
-    //   ownerWithdrawFeeDenominator,
-    //   hostFeeNumerator,
-    //   hostFeeDenominator,
-    //   curveType,
-    // );
-
     // transaction.add(instruction);
-    // await sendAndConfirmTransaction(
-    //   'createAccount and InitializeSwap',
-    //   connection,
-    //   transaction,
-    //   payer,
-    //   tokenSwapAccount,
-    // );
+    await sendAndConfirmTransaction(
+      'createAccount and InitializeSwap',
+      connection,
+      transaction,
+      payer,
+      onesolProtocolAccount,
+    );
 
     return onesolSwap;
   }
@@ -451,8 +260,10 @@ export class OneSolProtocol{
    */
   async swap(
     userSource: PublicKey,
+    onesolSource: PublicKey,
     poolSource: PublicKey,
     poolDestination: PublicKey,
+    onesolDestination: PublicKey,
     userDestination: PublicKey,
     hostFeeAccount: PublicKey | null,
     userTransferAuthority: Account,
@@ -464,12 +275,16 @@ export class OneSolProtocol{
       this.connection,
       new Transaction().add(
         OneSolProtocol.swapInstruction(
+          this.onesolProtocol,
           this.tokenSwap,
-          this.authority,
+          this.onesolAuthority,
+          this.tokenSwapAuthority,
           userTransferAuthority.publicKey,
           userSource,
+          onesolSource,
           poolSource,
           poolDestination,
+          onesolDestination,
           userDestination,
           this.poolToken,
           this.feeAccount,
@@ -486,12 +301,16 @@ export class OneSolProtocol{
   }
 
   static swapInstruction(
+    onesolProtocol: PublicKey,
     tokenSwap: PublicKey,
-    authority: PublicKey,
+    onesolAuthority: PublicKey,
+    tokenSwapAuthority: PublicKey,
     userTransferAuthority: PublicKey,
     userSource: PublicKey,
+    onesolSource: PublicKey,
     poolSource: PublicKey,
     poolDestination: PublicKey,
+    onesolDestination: PublicKey,
     userDestination: PublicKey,
     poolMint: PublicKey,
     feeAccount: PublicKey,
@@ -518,12 +337,16 @@ export class OneSolProtocol{
     );
 
     const keys = [
+      {pubkey: onesolProtocol, isSigner: false, isWritable: false},
       {pubkey: tokenSwap, isSigner: false, isWritable: false},
-      {pubkey: authority, isSigner: false, isWritable: false},
+      {pubkey: onesolAuthority, isSigner: false, isWritable: false},
+      {pubkey: tokenSwapAuthority, isSigner: false, isWritable: false},
       {pubkey: userTransferAuthority, isSigner: true, isWritable: false},
       {pubkey: userSource, isSigner: false, isWritable: true},
+      {pubkey: onesolSource, isSigner: false, isWritable: true},
       {pubkey: poolSource, isSigner: false, isWritable: true},
       {pubkey: poolDestination, isSigner: false, isWritable: true},
+      {pubkey: onesolDestination, isSigner: false, isWritable: true},
       {pubkey: userDestination, isSigner: false, isWritable: true},
       {pubkey: poolMint, isSigner: false, isWritable: true},
       {pubkey: feeAccount, isSigner: false, isWritable: true},
