@@ -28,8 +28,8 @@ const TOKEN_SWAP_PROGRAM_ADDRESS: &str = &"BgGyXsZxLbug3f4q7W5d4EtsqkQjH1M9pJxUS
 
 /// Supporting DEX
 const DEXES_COUNT: usize = 2;
-constant FLAG_DISABLE_SWAP1 = 0x01;
-constant FLAG_DISABLE_SWAP2 = 0x02;
+const FLAG_DISABLE_SWAP1: u64 = 0x01;
+const FLAG_DISABLE_SWAP2: u64 = 0x02;
 
 impl Processor {
     /// Processes an [Instruction](enum.Instruction.html).
@@ -107,48 +107,59 @@ impl Processor {
         s: u64,                 // parts
         amounts: Vec<Vec<i64>>  // exchangesReturns
     ) -> Vec<u64> {
+        println!("_findBestDistribution: input {} {:?}", s, amounts);
+
         let n = amounts.len();
 
-        let mut answer:Vec<Vec<i64>> = vec![vec![MIN;(s+1) as usize];n];
-        let mut parent = vec![vec![0;(s+1) as usize];n];
+        let mut answer: Vec<Vec<i64>> = vec![vec![MIN;(s+1) as usize];n];
+        let mut parent: Vec<Vec<u64>> = vec![vec![0;(s+1) as usize];n];
 
         for j in (0..s+1) {
             answer[0][j as usize] = amounts[0][j as usize] as i64;
+            // Aleardy initlize.
             // for i in (1..n) {
             //     answer[i as usize][j as usize] = MIN;
             // }
             // parent[0][j as usize] = 0;
         }
+        println!("_findBestDistribution: before {:?}", answer);
 
         for i in (1..n) {
             for j in (0..s+1) {
                 answer[i as usize][j as usize] = answer[(i - 1) as usize][j as usize];
                 parent[i as usize][j as usize] = j;
 
+                // println!("_findBestDistribution: {} {} {:?}", i, j, answer);
+
                 for k in (1..j+1) {
-                    if (answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] as i64 > answer[i as usize][j as usize]) {
-                        answer[i as usize][j as usize] = answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] as i64;
+                    let a = answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] as i64;
+                    if (a > answer[i as usize][j as usize]) {
+                        answer[i as usize][j as usize] = a;
                         parent[i as usize][j as usize] = j - k;
+                        println!("_findBestDistribution: {} {} {} {:?} {:?}", i, j, k, parent, answer);
                     }
                 }
             }
         }
         let mut distribution: Vec<u64> = vec![0;DEXES_COUNT];
+        println!("_findBestDistribution: {:?}", answer);
+        println!("_findBestDistribution: {:?}", parent);
 
         let mut partsLeft = s;
         let mut curExchange: usize = n - 1;
         while partsLeft > 0 {
             distribution[curExchange] = partsLeft - parent[curExchange][partsLeft as usize];
             partsLeft = parent[curExchange][partsLeft as usize];
-            partsLeft -= 1;
+            curExchange -= 1;
         }
 
+        // Useless.
         // let returnAmount = if (answer[(n - 1) as usize][s as usize] == MIN) { 0 } else { answer[(n - 1) as usize][s as usize] as u64 };
 
-        // return (returnAmount, distribution);
         return distribution;
     }
 
+    /// Flags checking.
     fn _getAllReserves(flags: u64) -> Vec<fn(u64, u64, u64)->(Vec<u64>, u64)> {
         return vec![
             if flags & FLAG_DISABLE_SWAP1 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap1},
@@ -158,18 +169,20 @@ impl Processor {
 
     fn getExpectedReturnWithGas(
         amount: u64,
-        parts: u64,
-        flags: u64,
+        parts: u64, // Number of pieces source volume could be splitted
+        flags: u64, // Flags for enabling and disabling some features
     ) -> Vec<u64> {
         let mut atLeastOnePositive = false;
         let reserves = Self::_getAllReserves(flags);
+        // matrix[i] = new int256[](parts + 1);
         let mut matrix: Vec<Vec<i64>> = vec![vec![0;(parts + 1) as usize];DEXES_COUNT];
         let mut gases = vec![0;DEXES_COUNT];
+
         for i in (0..DEXES_COUNT) {
             let (rets, gas) = reserves[i as usize](amount, parts, flags);
             gases[i as usize] = gas;
             for j in (0..rets.len()) {
-                matrix[i][j+1] = (rets[j] as i64) - (gas as i64);
+                matrix[i][j + 1] = (rets[j] as i64) - (gas as i64);
                 atLeastOnePositive = atLeastOnePositive || (matrix[i][j + 1] > 0);
             }
         }
@@ -185,9 +198,12 @@ impl Processor {
         }
 
         let distribution = Self::_findBestDistribution(parts, matrix);
+        println!("getExpectedReturnWithGas: {:?}", distribution);
+
         return distribution
     }
 
+    /// Generate in 0..amount
     fn _linearInterpolation(
         value: u64,
         parts: u64,
@@ -209,7 +225,7 @@ impl Processor {
         let mut rets = vec![0;amounts.len()];
         for i in (0..amounts.len()) {
             // TODO: Calculate amount out.
-            rets[i] = 0;
+            rets[i] = amounts[i];
         }
         return (rets, 0);
     }
@@ -222,7 +238,7 @@ impl Processor {
         let mut rets = vec![0;amounts.len()];
         for i in (0..amounts.len()) {
             // TODO: Calculate amount out.
-            rets[i] = 0;
+            rets[i] = amounts[i] * 2;
         }
         return (rets, 0);
     }
@@ -244,5 +260,21 @@ impl PrintProgramError for OneSolError {
             OneSolError::Unknown => msg!("Error: Unknown"),
             OneSolError::InvalidInstruction => msg!("Error: InvalidInstruction"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_program::{
+        msg,
+    };
+    #[test]
+    fn test_distribution() {
+        let result = Processor::getExpectedReturnWithGas(100, 4, 0);
+        assert_eq!(
+            result,
+            vec![0]
+        );
     }
 }
