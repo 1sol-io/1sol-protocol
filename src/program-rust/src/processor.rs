@@ -28,6 +28,8 @@ const TOKEN_SWAP_PROGRAM_ADDRESS: &str = &"BgGyXsZxLbug3f4q7W5d4EtsqkQjH1M9pJxUS
 
 /// Supporting DEX
 const DEXES_COUNT: usize = 2;
+constant FLAG_DISABLE_SWAP1 = 0x01;
+constant FLAG_DISABLE_SWAP2 = 0x02;
 
 impl Processor {
     /// Processes an [Instruction](enum.Instruction.html).
@@ -148,10 +150,9 @@ impl Processor {
     }
 
     fn _getAllReserves(flags: u64) -> Vec<fn(u64, u64, u64)->(Vec<u64>, u64)> {
-        // TODO: check flags.
         return vec![
-            Self::_calculateSwap1,
-            Self::_calculateSwap2,
+            if flags & FLAG_DISABLE_SWAP1 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap1},
+            if flags & FLAG_DISABLE_SWAP2 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap2},
         ];
     }
 
@@ -224,6 +225,13 @@ impl Processor {
             rets[i] = 0;
         }
         return (rets, 0);
+    }
+    fn _calculateNoReturn(
+        amount: u64,
+        parts: u64,
+        flags: u64
+    ) -> (Vec<u64>, u64) {
+        return (vec![0;parts as usize], 0);
     }
 }
 
