@@ -7,7 +7,7 @@ import {
     Transaction,
 } from '@solana/web3.js';
 import {AccountLayout, Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
-import {TokenSwap, CurveType} from '@solana/spl-token-swap';
+import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
 
 import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID} from '../src';
 import {sendAndConfirmTransaction} from '../src/util/send-and-confirm-transaction';
@@ -206,6 +206,29 @@ export async function createTokenSwap(): Promise<void> {
       TOKEN_SWAP_PROGRAM_ID,
     );
 
+    let transaction;
+    // Allocate memory for the account
+    const balanceNeeded = await TokenSwap.getMinBalanceRentForExemptTokenSwap(
+      connection,
+    );
+    transaction = new Transaction();
+    transaction.add(
+      SystemProgram.createAccount({
+        fromPubkey: swapPayer.publicKey,
+        newAccountPubkey: aliceTokenSwapAccount.publicKey,
+        lamports: balanceNeeded,
+        space: TokenSwapLayout.span,
+        programId: TOKEN_SWAP_PROGRAM_ID,
+      }),
+    );
+    await sendAndConfirmTransaction(
+      'createAccount and InitializeSwap',
+      connection,
+      transaction,
+      swapPayer,
+      aliceTokenSwapAccount,
+    );
+
     console.log('creating onesolprotocol');
     onesolProtocol = await OneSolProtocol.createOneSolProtocol(
       connection,
@@ -219,6 +242,7 @@ export async function createTokenSwap(): Promise<void> {
       tokenPool.publicKey,
       feeAccount,
       ONESOL_PROTOCOL_PROGRAM_ID,
+      TOKEN_SWAP_PROGRAM_ID,
       TOKEN_PROGRAM_ID,
     )
 }

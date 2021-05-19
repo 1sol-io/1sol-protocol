@@ -3,6 +3,7 @@ import BN from 'bn.js';
 import {Buffer} from 'buffer';
 import * as BufferLayout from 'buffer-layout';
 import type {Connection, TransactionSignature} from '@solana/web3.js';
+import {TokenSwapLayout} from '@solana/spl-token-swap';
 import {
   Account,
   PublicKey,
@@ -96,6 +97,7 @@ export class OneSolProtocol{
     public onesolProtocol: PublicKey,
     public tokenSwap: PublicKey,
     public protocolProgramId: PublicKey,
+    public tokenSwapProgramId: PublicKey,
     public tokenProgramId: PublicKey,
     public poolToken: PublicKey,
     public feeAccount: PublicKey,
@@ -109,6 +111,7 @@ export class OneSolProtocol{
     this.onesolProtocol = onesolProtocol
     this.tokenSwap = tokenSwap
     this.protocolProgramId = protocolProgramId;
+    this.tokenSwapProgramId = tokenSwapProgramId;
     this.tokenProgramId = tokenProgramId;
     this.poolToken = poolToken;
     this.feeAccount = feeAccount;
@@ -199,6 +202,7 @@ export class OneSolProtocol{
     poolToken: PublicKey,
     feeAccount: PublicKey,
     protocolProgramId: PublicKey,
+    tokenSwapProgramId: PublicKey,
     tokenProgramId: PublicKey,
 
   ): Promise<OneSolProtocol> {
@@ -208,6 +212,7 @@ export class OneSolProtocol{
       onesolProtocolAccount.publicKey,
       tokenSwapAccount.publicKey,
       protocolProgramId,
+      tokenSwapProgramId,
       tokenProgramId,
       poolToken,
       feeAccount,
@@ -223,6 +228,7 @@ export class OneSolProtocol{
       connection,
     );
     console.log("balanceNeeded: " + balanceNeeded);
+    console.log("create onesolProgram account.");
     transaction = new Transaction();
     transaction.add(
       SystemProgram.createAccount({
@@ -234,6 +240,7 @@ export class OneSolProtocol{
       }),
     );
 
+
     // transaction.add(instruction);
     await sendAndConfirmTransaction(
       'createAccount and InitializeSwap',
@@ -242,6 +249,26 @@ export class OneSolProtocol{
       payer,
       onesolProtocolAccount,
     );
+    // console.log("create alice tokenswap account.");
+    // let transaction2;
+    // transaction2 = new Transaction();
+    // transaction2.add(
+    //   SystemProgram.createAccount({
+    //     fromPubkey: payer.publicKey,
+    //     newAccountPubkey: tokenSwapAccount.publicKey,
+    //     lamports: balanceNeeded,
+    //     space: TokenSwapLayout.span,
+    //     programId: tokenSwapProgramId, 
+    //   }),
+    // );
+    // await sendAndConfirmTransaction(
+    //   'createAccount and InitializeSwap',
+    //   connection,
+    //   transaction,
+    //   payer,
+    //   tokenSwapAccount,
+    // );
+
 
     return onesolSwap;
   }

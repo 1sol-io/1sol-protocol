@@ -85,16 +85,16 @@ impl Processor {
             host_fee_pubkey = Some(_host_fee_account_info.key);
         }
 
-        // let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
+        let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
         // transfer AliceA -> OnesolA
-        msg!("transfer from source to onesol-source");
+        msg!("transfer AliceA -> onesolA");
         Self::token_transfer(
             swap_info.key,
             token_program_info.clone(), 
             source_info.clone(), 
             onesol_source_info.clone(),
             user_transfer_authority_info.clone(),
-            1,
+            _token_swap.nonce(),
             amount_in
         ).unwrap();
         
@@ -112,7 +112,7 @@ impl Processor {
         let swap = token_swap::swap(
             &token_swap_program_id,
             token_program_info.key,
-            onesol_info.key,
+            swap_info.key,
             swap_authority_info.key,
             user_transfer_authority_info.key,
             onesol_source_info.key,
@@ -125,7 +125,7 @@ impl Processor {
             instruction,
         )?;
         let mut swap_accounts = vec![
-            onesol_info.clone(),
+            swap_info.clone(),
             swap_authority_info.clone(),
             user_transfer_authority_info.clone(),
             onesol_source_info.clone(),
@@ -134,15 +134,19 @@ impl Processor {
             onesol_destination_info.clone(),
             pool_mint_info.clone(),
             pool_fee_account_info.clone(),
+            token_program_info.clone(),
         ];
         if let Ok(_host_fee_account_info) = host_fee_account_info {
             swap_accounts.push(_host_fee_account_info.clone());
         }
         // invoke tokenswap
+        msg!("swap onesolA -> onesolB invoke token_swap {}, {}", swap.accounts.len(), swap_accounts.len());
         invoke(&swap, &swap_accounts[..])?;
+        // invoke_signed(&swap, &swap_accounts[..], &[&[]])
 
         // Transfer OnesolB -> AliceB
         // TODO 这里应该确定一下 amout_out
+        msg!("transfer OneSolB -> AliceB");
         Self::token_transfer(
             swap_info.key,
             token_program_info.clone(), 
@@ -150,7 +154,7 @@ impl Processor {
             destination_info.clone(),
             user_transfer_authority_info.clone(),
             // _token_swap.nonce(),
-            1,
+            _token_swap.nonce(),
             minimum_amount_out,
         ).unwrap();
 
