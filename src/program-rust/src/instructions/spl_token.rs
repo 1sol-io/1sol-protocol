@@ -1,11 +1,10 @@
-
 // ! Spl-Token
 
 use solana_program::{
-    pubkey::Pubkey,
+    entrypoint::ProgramResult,
     instruction::{AccountMeta, Instruction},
-    entrypoint::{ProgramResult},
-    program_error::{ProgramError},
+    program_error::ProgramError,
+    pubkey::Pubkey,
 };
 use std::mem::size_of;
 
@@ -13,7 +12,6 @@ use std::mem::size_of;
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenInstruction {
-
     /// Transfers tokens from one account to another either directly or via a
     /// delegate.  If this account is associated with the native mint then equal
     /// amounts of SOL and Tokens will be transferred to the destination
@@ -35,7 +33,6 @@ pub enum TokenInstruction {
         /// The amount of tokens to transfer.
         amount: u64,
     },
-
 }
 
 impl TokenInstruction {
@@ -50,7 +47,6 @@ impl TokenInstruction {
         };
         buf
     }
-
 }
 
 solana_program::declare_id!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");

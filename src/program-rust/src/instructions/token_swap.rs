@@ -252,7 +252,6 @@ pub fn swap(
     })
 }
 
-
 /// Trait representing access to program state across all versions
 #[enum_dispatch]
 pub trait SwapState {
@@ -351,7 +350,6 @@ pub struct SwapV1 {
 
     /// Pool token account to receive trading and / or withdrawal fees
     pub pool_fee_account: Pubkey,
-
     // /// All fee information
     // pub fees: Fees,
 

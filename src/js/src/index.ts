@@ -135,43 +135,6 @@ export class OneSolProtocol{
     );
   }
 
-  // static async loadOneSolProtocol(
-  //   connection: Connection,
-  //   address: PublicKey,
-  //   programId: PublicKey,
-  //   payer: Account,
-  // ): Promise<OneSolProtocol> {
-  //   const data = await loadAccount(connection, address, programId);
-  //   const onesolProtocolData = OneSolProtocolLayout.decode(data);
-  //   if (!onesolProtocolData.isInitialized) {
-  //     throw new Error(`Invalid token swap state`);
-  //   }
-
-  //   const [authority] = await PublicKey.findProgramAddress(
-  //     [address.toBuffer()],
-  //     programId,
-  //   );
-
-  //   const poolToken = new PublicKey(onesolProtocolData.tokenPool);
-  //   const feeAccount = new PublicKey(onesolProtocolData.feeAccount);
-  //   const tokenAccountA = new PublicKey(onesolProtocolData.tokenAccountA);
-  //   const tokenAccountB = new PublicKey(onesolProtocolData.tokenAccountB);
-  //   const tokenProgramId = new PublicKey(onesolProtocolData.tokenProgramId);
-
-  //   return new OneSolProtocol(
-  //     connection,
-  //     address,
-  //     programId,
-  //     tokenProgramId,
-  //     poolToken,
-  //     feeAccount,
-  //     authority,
-  //     tokenAccountA,
-  //     tokenAccountB,
-  //     payer,
-  //   );
-  // }
-
   /**
    * Create a new OneSol Swap
    *
@@ -249,27 +212,6 @@ export class OneSolProtocol{
       payer,
       onesolProtocolAccount,
     );
-    // console.log("create alice tokenswap account.");
-    // let transaction2;
-    // transaction2 = new Transaction();
-    // transaction2.add(
-    //   SystemProgram.createAccount({
-    //     fromPubkey: payer.publicKey,
-    //     newAccountPubkey: tokenSwapAccount.publicKey,
-    //     lamports: balanceNeeded,
-    //     space: TokenSwapLayout.span,
-    //     programId: tokenSwapProgramId, 
-    //   }),
-    // );
-    // await sendAndConfirmTransaction(
-    //   'createAccount and InitializeSwap',
-    //   connection,
-    //   transaction,
-    //   payer,
-    //   tokenSwapAccount,
-    // );
-
-
     return onesolSwap;
   }
 
@@ -324,7 +266,7 @@ export class OneSolProtocol{
         ),
       ),
       this.payer,
-      userTransferAuthority,
+      userTransferAuthority
     );
   }
 

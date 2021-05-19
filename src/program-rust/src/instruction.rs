@@ -44,7 +44,6 @@ pub enum OneSolInstruction {
     ///   9. '[]` Token program id
     ///   10 `[optional, writable]` Host fee account to receive additional trading fees
     Swap(Swap),
-
 }
 
 impl OneSolInstruction {
