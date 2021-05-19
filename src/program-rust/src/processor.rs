@@ -26,6 +26,9 @@ const TOKEN_SWAP_ADDRESS: &str = &"GSKD4BfZBFzCtGzZ7qEgPgr4UgkxiCK3bgTV9PQFRMab"
 #[cfg(not(debug_assertions))]
 const TOKEN_SWAP_ADDRESS: &str = &"SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8";
 
+/// Supporting DEX
+const DEXES_COUNT: usize = 2;
+
 impl Processor {
     /// Processes an [Instruction](enum.Instruction.html).
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
@@ -94,7 +97,7 @@ impl Processor {
     /// https://github.com/1inch/1inchProtocol/blob/master/contracts/OneSplitBase.sol\#L139
     fn _findBestDistribution(
         s: u64,                 // parts
-        amounts: Vec<Vec<u64>>  // exchangesReturns
+        amounts: Vec<Vec<i64>>  // exchangesReturns
     ) -> Vec<u64> {
         let n = amounts.len();
 
@@ -122,7 +125,6 @@ impl Processor {
                 }
             }
         }
-        const DEXES_COUNT: usize = 2;
         let mut distribution: Vec<u64> = vec![0;DEXES_COUNT];
 
         let mut partsLeft = s;
@@ -137,6 +139,85 @@ impl Processor {
 
         // return (returnAmount, distribution);
         return distribution;
+    }
+
+    fn _getAllReserves(flags: u64) -> Vec<fn(u64, u64, u64)->(Vec<u64>, u64)> {
+        // TODO: check flags.
+        return vec![
+            Self::_calculateSwap1,
+            Self::_calculateSwap2,
+        ];
+    }
+
+    fn getExpectedReturnWithGas(
+        amount: u64,
+        parts: u64,
+        flags: u64,
+    ) -> Vec<u64> {
+        let mut atLeastOnePositive = false;
+        let reserves = Self::_getAllReserves(flags);
+        let mut matrix: Vec<Vec<i64>> = vec![vec![0;(parts + 1) as usize];DEXES_COUNT];
+        let mut gases = vec![0;DEXES_COUNT];
+        for i in (0..DEXES_COUNT) {
+            let (rets, gas) = reserves[i as usize](amount, parts, flags);
+            gases[i as usize] = gas;
+            for j in (0..rets.len()) {
+                matrix[i][j+1] = (rets[j] as i64) - (gas as i64);
+                atLeastOnePositive = atLeastOnePositive || (matrix[i][j + 1] > 0);
+            }
+        }
+
+        if (!atLeastOnePositive) {
+            for i in (0..DEXES_COUNT) {
+                for j in (1..parts+1) {
+                    if (matrix[i as usize][j as usize] == 0) {
+                        matrix[i as usize][j as usize] = MIN;
+                    }
+                }
+            }
+        }
+
+        let distribution = Self::_findBestDistribution(parts, matrix);
+        return distribution
+    }
+
+    fn _linearInterpolation(
+        value: u64,
+        parts: u64,
+    ) -> Vec<u64> {
+        let mut rets = vec![0;parts as usize];
+        for i in (0..parts) {
+            rets[i as usize] = value * (i + 1) / parts;
+        }
+        return rets
+    }
+
+    // TODO: Fix name.
+    fn _calculateSwap1(
+        amount: u64,
+        parts: u64,
+        flags: u64
+    ) -> (Vec<u64>, u64) {
+        let amounts = Self::_linearInterpolation(amount, parts);
+        let mut rets = vec![0;amounts.len()];
+        for i in (0..amounts.len()) {
+            // TODO: Calculate amount out.
+            rets[i] = 0;
+        }
+        return (rets, 0);
+    }
+    fn _calculateSwap2(
+        amount: u64,
+        parts: u64,
+        flags: u64
+    ) -> (Vec<u64>, u64) {
+        let amounts = Self::_linearInterpolation(amount, parts);
+        let mut rets = vec![0;amounts.len()];
+        for i in (0..amounts.len()) {
+            // TODO: Calculate amount out.
+            rets[i] = 0;
+        }
+        return (rets, 0);
     }
 }
 
