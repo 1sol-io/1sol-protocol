@@ -68,7 +68,8 @@ let currentFeeAmount = 0;
 // Because there is no withdraw fee in the production version, these numbers
 // need to get slightly tweaked in the two cases.
 const SWAP_AMOUNT_IN = 100000;
-const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90674;
+// const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90674;
+const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 1 : 1;
 const SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 22273 : 22276;
 const HOST_SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS
   ? Math.floor((SWAP_FEE * HOST_FEE_NUMERATOR) / HOST_FEE_DENOMINATOR)
