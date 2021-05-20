@@ -199,7 +199,7 @@ impl Processor {
         s: u64,                 // parts
         amounts: Vec<Vec<i64>>  // exchangesReturns
     ) -> Vec<u64> {
-        println!("_findBestDistribution: input {} {:?}", s, amounts);
+        // println!("_findBestDistribution: input {} {:?}", s, amounts);
 
         let n = amounts.len();
 
@@ -214,7 +214,7 @@ impl Processor {
             // }
             // parent[0][j as usize] = 0;
         }
-        println!("_findBestDistribution: before {:?}", answer);
+        // println!("_findBestDistribution: before {:?}", answer);
 
         for i in (1..n) {
             for j in (0..s+1) {
@@ -228,21 +228,23 @@ impl Processor {
                     if (a > answer[i as usize][j as usize]) {
                         answer[i as usize][j as usize] = a;
                         parent[i as usize][j as usize] = j - k;
-                        println!("_findBestDistribution: {} {} {} {:?} {:?}", i, j, k, parent, answer);
+                        // println!("_findBestDistribution: {} {} {} {:?} ❌ {:?}", i, j, k, parent, answer);
                     }
                 }
             }
         }
         let mut distribution: Vec<u64> = vec![0;DEXES_COUNT];
-        println!("_findBestDistribution: {:?}", answer);
-        println!("_findBestDistribution: {:?}", parent);
+        // println!("_findBestDistribution: {:?}", answer);
+        // println!("_findBestDistribution: {:?}", parent);
 
         let mut partsLeft = s;
-        let mut curExchange: usize = n - 1;
+        let mut curExchange: i64 = n as i64 - 1;
         while partsLeft > 0 {
-            distribution[curExchange] = partsLeft - parent[curExchange][partsLeft as usize];
-            partsLeft = parent[curExchange][partsLeft as usize];
+            distribution[curExchange as usize] = partsLeft - parent[curExchange as usize][partsLeft as usize];
+            partsLeft = parent[curExchange as usize][partsLeft as usize];
             curExchange -= 1;
+            /// Keep safe.
+            if curExchange < 0 { break; }
         }
 
         // Useless.
@@ -330,7 +332,7 @@ impl Processor {
         let mut rets = vec![0;amounts.len()];
         for i in (0..amounts.len()) {
             // TODO: Calculate amount out.
-            rets[i] = amounts[i] * 2;
+            rets[i] = amounts[i] + 1;
         }
         return (rets, 0);
     }
@@ -363,10 +365,10 @@ mod tests {
     };
     #[test]
     fn test_distribution() {
-        let result = Processor::getExpectedReturnWithGas(100, 4, 0);
+        let result = Processor::getExpectedReturnWithGas(10, 100, 0);
         assert_eq!(
             result,
-            vec![0]
+            vec![90, 10]
         );
     }
 }
