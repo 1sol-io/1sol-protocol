@@ -175,19 +175,21 @@ impl Processor {
             swap_accounts.len()
         );
 
-        let dest_account1 = spl_token::state::Account::unpack(
-            &onesol_destination_info.data.borrow(),
-        )?;
+        let dest_account1 =
+            spl_token::state::Account::unpack(&onesol_destination_info.data.borrow())?;
 
         let amount1 = dest_account1.amount;
 
         invoke(&swap, &swap_accounts[..])?;
         // invoke_signed(&swap, &swap_accounts[..], &[&[swap_info]])
 
-        let dest_account = spl_token::state::Account::unpack(
-            &onesol_destination_info.data.borrow()
-        )?;
-        msg!("onesol_destination amount: {}, should tranfer: {}", dest_account.amount, dest_account.amount - amount1);
+        let dest_account =
+            spl_token::state::Account::unpack(&onesol_destination_info.data.borrow())?;
+        msg!(
+            "onesol_destination amount: {}, should tranfer: {}",
+            dest_account.amount,
+            dest_account.amount - amount1
+        );
         // Transfer OnesolB -> AliceB
         // TODO 这里应该确定一下 amout_out
         msg!("transfer OneSolB -> AliceB");
