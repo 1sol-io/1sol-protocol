@@ -15,6 +15,8 @@ pub struct Swap {
     pub amount_in: u64,
     /// Minimum amount of DESTINATION token to output, prevents excessive slippage
     pub minimum_amount_out: u64,
+    /// nonce used to create validate program address
+    pub nonce: u8,
 }
 
 /// Instructions supported by the 1sol constracts program
@@ -58,9 +60,11 @@ impl OneSolInstruction {
             1 => {
                 let (amount_in, rest) = Self::unpack_u64(rest)?;
                 let (minimum_amount_out, _rest) = Self::unpack_u64(rest)?;
+                let (&nonce, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInstruction)?;
                 Self::Swap(Swap {
                     amount_in,
                     minimum_amount_out,
+                    nonce,
                 })
             }
             _ => return Err(OneSolError::InvalidInstruction.into()),

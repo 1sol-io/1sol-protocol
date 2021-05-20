@@ -62,10 +62,10 @@ export const OneSolProtocolLayout = BufferLayout.struct([
   BufferLayout.u8('isInitialized'),
   BufferLayout.u8('nonce'),
   Layout.publicKey('tokenProgramId'),
-  Layout.publicKey('tokenAccountA'),
-  Layout.publicKey('tokenAccountB'),
-  Layout.publicKey('tokenPool'),
-  Layout.publicKey('feeAccount'),
+  // Layout.publicKey('tokenAccountA'),
+  // Layout.publicKey('tokenAccountB'),
+  // Layout.publicKey('tokenPool'),
+  // Layout.publicKey('feeAccount'),
 ]);
 
 // export const CurveType = Object.freeze({
@@ -106,6 +106,7 @@ export class OneSolProtocol{
     public tokenAccountA: PublicKey,
     public tokenAccountB: PublicKey,
     public payer: Account,
+    public nonce: number,
   ) {
     this.connection = connection;
     this.onesolProtocol = onesolProtocol
@@ -120,6 +121,7 @@ export class OneSolProtocol{
     this.tokenAccountA = tokenAccountA;
     this.tokenAccountB = tokenAccountB;
     this.payer = payer;
+    this.nonce = nonce;
   }
 
   /**
@@ -167,6 +169,7 @@ export class OneSolProtocol{
     protocolProgramId: PublicKey,
     tokenSwapProgramId: PublicKey,
     tokenProgramId: PublicKey,
+    nonce: number,
 
   ): Promise<OneSolProtocol> {
     let transaction;
@@ -184,6 +187,7 @@ export class OneSolProtocol{
       tokenAccountA,
       tokenAccountB,
       payer,
+      nonce,
     );
 
     // Allocate memory for the account
@@ -263,6 +267,7 @@ export class OneSolProtocol{
           this.tokenSwapProgramId,
           amountIn,
           minimumAmountOut,
+          this.nonce,
         ),
       ),
       this.payer,
@@ -290,11 +295,13 @@ export class OneSolProtocol{
     tokenSwapProgramId: PublicKey,
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
+    nonce: number,
   ): TransactionInstruction {
     const dataLayout = BufferLayout.struct([
       BufferLayout.u8('instruction'),
       Layout.uint64('amountIn'),
       Layout.uint64('minimumAmountOut'),
+      BufferLayout.u8('nonce'),
     ]);
 
     const data = Buffer.alloc(dataLayout.span);
@@ -303,6 +310,7 @@ export class OneSolProtocol{
         instruction: 1, // Swap instruction
         amountIn: new Numberu64(amountIn).toBuffer(),
         minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
+        nonce: nonce,
       },
       data,
     );

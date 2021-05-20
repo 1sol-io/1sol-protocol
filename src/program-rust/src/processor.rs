@@ -3,8 +3,9 @@
 use crate::{
     error::OneSolError,
     instruction::{Initialize, OneSolInstruction, Swap},
-    instructions::{spl_token, token_swap},
+    instructions::token_swap,
 };
+
 use num_traits::FromPrimitive;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -36,9 +37,10 @@ impl Processor {
             OneSolInstruction::Swap(Swap {
                 amount_in,
                 minimum_amount_out,
+                nonce,
             }) => {
                 msg!("Instruction: Swap");
-                Self::process_swap(program_id, amount_in, minimum_amount_out, accounts)
+                Self::process_swap(program_id, amount_in, minimum_amount_out, nonce, accounts)
             }
         }
     }
@@ -53,6 +55,7 @@ impl Processor {
         program_id: &Pubkey,
         amount_in: u64,
         minimum_amount_out: u64,
+        nonce: u8,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
@@ -78,16 +81,16 @@ impl Processor {
             host_fee_pubkey = Some(_host_fee_account_info.key);
         }
 
-        let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
+        // let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
         // transfer AliceA -> OnesolA
         msg!("transfer AliceA -> onesolA");
         Self::token_transfer(
-            swap_info.key,
+            onesol_info.key,
             token_program_info.clone(),
             source_info.clone(),
             onesol_source_info.clone(),
             user_transfer_authority_info.clone(),
-            _token_swap.nonce(),
+            nonce,
             amount_in,
         )
         .unwrap();
@@ -145,13 +148,14 @@ impl Processor {
         // TODO 这里应该确定一下 amout_out
         msg!("transfer OneSolB -> AliceB");
         Self::token_transfer(
-            swap_info.key,
+            onesol_info.key,
             token_program_info.clone(),
             onesol_destination_info.clone(),
             destination_info.clone(),
             user_transfer_authority_info.clone(),
             // _token_swap.nonce(),
-            _token_swap.nonce(),
+            nonce,
+            // _token_swap.nonce(),
             minimum_amount_out,
         )
         .unwrap();
@@ -172,7 +176,7 @@ impl Processor {
         let swap_bytes = swap.to_bytes();
         let authority_signature_seeds = [&swap_bytes[..32], &[nonce]];
         let signers = &[&authority_signature_seeds[..]];
-        let ix = spl_token::transfer(
+        let ix = spl_token::instruction::transfer(
             token_program.key,
             source.key,
             destination.key,
@@ -180,12 +184,12 @@ impl Processor {
             &[],
             amount,
         )?;
-        invoke(&ix, &[source, destination, authority, token_program])
-        // invoke_signed(
-        //     &ix,
-        //     &[source, destination, authority, token_program],
-        //     signers,
-        // )
+        // invoke(&ix, &[source, destination, authority, token_program])
+        invoke_signed(
+            &ix,
+            &[source, destination, authority, token_program],
+            signers,
+        )
     }
 }
 
