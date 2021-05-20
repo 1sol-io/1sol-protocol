@@ -14,6 +14,7 @@ use solana_program::{
     msg,
     program::{invoke, invoke_signed},
     program_error::{PrintProgramError, ProgramError},
+    program_pack::Pack,
     pubkey::Pubkey,
 };
 
@@ -46,7 +47,8 @@ impl Processor {
     }
 
     /// process
-    pub fn process_initialize(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    pub fn process_initialize(program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
+        msg!("start process_initialize, {}", program_id);
         Ok(())
     }
 
@@ -80,7 +82,12 @@ impl Processor {
         if let Ok(_host_fee_account_info) = host_fee_account_info {
             host_fee_pubkey = Some(_host_fee_account_info.key);
         }
-
+        if onesol_info.owner != program_id {
+            return Err(ProgramError::IncorrectProgramId);
+        };
+        if *onesol_authority_info.key != Self::authority_id(program_id, onesol_info.key, nonce)? {
+            return Err(OneSolError::InvalidProgramAddress.into());
+        }
         // let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
         // transfer AliceA -> OnesolA
         msg!("transfer AliceA -> onesolA");
@@ -141,9 +148,12 @@ impl Processor {
             swap_accounts.len()
         );
         invoke(&swap, &swap_accounts[..])?;
-
         // invoke_signed(&swap, &swap_accounts[..], &[&[swap_info]])
 
+        let dest_account = spl_token::state::Account::unpack(
+            &onesol_destination_info.data.borrow()
+        )?;
+        msg!("onesol_destination amount: {}", dest_account.amount);
         // Transfer OnesolB -> AliceB
         // TODO 这里应该确定一下 amout_out
         msg!("transfer OneSolB -> AliceB");
@@ -156,7 +166,7 @@ impl Processor {
             // _token_swap.nonce(),
             nonce,
             // _token_swap.nonce(),
-            minimum_amount_out,
+            dest_account.amount,
         )
         .unwrap();
 
@@ -191,6 +201,16 @@ impl Processor {
             signers,
         )
     }
+
+    /// Calculates the authority id by generating a program address.
+    pub fn authority_id(
+        program_id: &Pubkey,
+        my_info: &Pubkey,
+        nonce: u8,
+    ) -> Result<Pubkey, OneSolError> {
+        Pubkey::create_program_address(&[&my_info.to_bytes()[..32], &[nonce]], program_id)
+            .or(Err(OneSolError::InvalidProgramAddress))
+    }
 }
 
 impl PrintProgramError for OneSolError {
@@ -201,6 +221,7 @@ impl PrintProgramError for OneSolError {
         match self {
             OneSolError::Unknown => msg!("Error: Unknown"),
             OneSolError::InvalidInstruction => msg!("Error: InvalidInstruction"),
+            OneSolError::InvalidProgramAddress => msg!("Error: InvildProgramAddress"),
         }
     }
 }

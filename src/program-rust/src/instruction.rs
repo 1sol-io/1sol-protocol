@@ -31,9 +31,9 @@ pub enum OneSolInstruction {
     /// Swap the tokens in the pool.
     ///
     ///   0. `[]` onesol-protocol account
-    ///   1. `[]` Token-swap
+    ///   1. `[]` token-swap account
     ///   2. `[]` onesol authority
-    ///   3. `[]` swap authority
+    ///   3. `[]` token-swap authority
     ///   4. `[]` user transfer authority
     ///   5. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
     ///   6. `[writable]` token_A onesol SOURCE Account, amount is transferable by user transfer authority,
@@ -44,6 +44,7 @@ pub enum OneSolInstruction {
     ///   7. `[writable]` Pool token mint, to generate trading fees
     ///   8. `[writable]` Fee account, to receive trading fees
     ///   9. '[]` Token program id
+    ///   9. '[]` Token-Swap program id
     ///   10 `[optional, writable]` Host fee account to receive additional trading fees
     Swap(Swap),
 }
@@ -54,7 +55,6 @@ impl OneSolInstruction {
         let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInstruction)?;
         Ok(match tag {
             0 => {
-                let (&nonce, rest) = rest.split_first().ok_or(OneSolError::InvalidInstruction)?;
                 Self::Initialize(Initialize {})
             }
             1 => {
