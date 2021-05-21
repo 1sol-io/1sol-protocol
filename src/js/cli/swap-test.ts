@@ -69,7 +69,7 @@ let currentFeeAmount = 0;
 // need to get slightly tweaked in the two cases.
 const SWAP_AMOUNT_IN = 100000;
 // const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90674;
-const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 1 : 1;
+const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90661;
 const SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 22273 : 22276;
 const HOST_SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS
   ? Math.floor((SWAP_FEE * HOST_FEE_NUMERATOR) / HOST_FEE_DENOMINATOR)
@@ -192,12 +192,12 @@ export async function createTokenSwap(): Promise<void> {
     const onesolProtocolAccount = new Account();
     
     let onesolProtocolAuthority, _nonce
-  
+    
     [onesolProtocolAuthority, _nonce] = await PublicKey.findProgramAddress(
       [onesolProtocolAccount.publicKey.toBuffer()],
-      ONESOL_PROTOCOL_PROGRAM_ID,
+        ONESOL_PROTOCOL_PROGRAM_ID,
     );
-
+  
     console.log('creating onesolprotocol');
     onesolProtocol = await OneSolProtocol.createOneSolProtocol(
       connection,
@@ -213,7 +213,8 @@ export async function createTokenSwap(): Promise<void> {
       ONESOL_PROTOCOL_PROGRAM_ID,
       TOKEN_SWAP_PROGRAM_ID,
       TOKEN_PROGRAM_ID,
-    )
+      _nonce,
+    ) 
 }
 
 export async function swap(): Promise<void> {
@@ -286,19 +287,19 @@ export async function swap(): Promise<void> {
 
   // let info;
   info = await mintA.getAccountInfo(userAccountA);
-  console.log("userA:" + info.amount.toNumber());
+  console.log("user TokenA:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == 0);
 
   info = await mintB.getAccountInfo(userAccountB);
-  console.log("userB:" + info.amount.toNumber());
+  console.log("user TokenB:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == SWAP_AMOUNT_OUT);
 
   info = await mintA.getAccountInfo(onesolAccountA);
-  console.log("onesolUserA:" + info.amount.toNumber());
+  console.log("onesol TokenA:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == 0);
 
   info = await mintB.getAccountInfo(onesolAccountB);
-  console.log("onesolUserB:" + info.amount.toNumber());
+  console.log("onesol TokenB:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == SWAP_AMOUNT_OUT);
 
   info = await mintA.getAccountInfo(tokenAccountA);
