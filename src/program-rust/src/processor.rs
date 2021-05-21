@@ -16,6 +16,15 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use core::i64::MIN;
+use std::{
+    // Hide Result from bindgen gets confused about generics in non-generic type declarations
+    result::Result as ResultGeneric,
+    convert::TryInto,
+};
+use spl_math::{checked_ceil_div::CheckedCeilDiv};
+use spl_token_swap::{
+    error::SwapError,
+};
 
 /// Program state handler.
 pub struct Processor {}
@@ -254,7 +263,7 @@ impl Processor {
     }
 
     /// Flags checking.
-    fn _getAllReserves(flags: u64) -> Vec<fn(u64, u64, u64)->(Vec<u64>, u64)> {
+    fn _getAllReserves(flags: u64) -> Vec< fn(&[AccountInfo], u64, u64, u64)->(Vec<u64>, u64) > {
         return vec![
             if flags & FLAG_DISABLE_SWAP1 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap1},
             if flags & FLAG_DISABLE_SWAP2 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap2},
@@ -262,6 +271,7 @@ impl Processor {
     }
 
     fn getExpectedReturnWithGas(
+        accounts: &[AccountInfo],
         amount: u64,
         parts: u64, // Number of pieces source volume could be splitted
         flags: u64, // Flags for enabling and disabling some features
@@ -273,7 +283,7 @@ impl Processor {
         let mut gases = vec![0;DEXES_COUNT];
 
         for i in (0..DEXES_COUNT) {
-            let (rets, gas) = reserves[i as usize](amount, parts, flags);
+            let (rets, gas) = reserves[i as usize](accounts, amount, parts, flags);
             gases[i as usize] = gas;
             for j in (0..rets.len()) {
                 matrix[i][j + 1] = (rets[j] as i64) - (gas as i64);
@@ -311,6 +321,7 @@ impl Processor {
 
     // TODO: Fix name.
     fn _calculateSwap1(
+        accounts: &[AccountInfo],
         amount: u64,
         parts: u64,
         flags: u64
@@ -324,6 +335,7 @@ impl Processor {
         return (rets, 0);
     }
     fn _calculateSwap2(
+        accounts: &[AccountInfo],
         amount: u64,
         parts: u64,
         flags: u64
@@ -332,17 +344,73 @@ impl Processor {
         let mut rets = vec![0;amounts.len()];
         for i in (0..amounts.len()) {
             // TODO: Calculate amount out.
-            rets[i] = amounts[i] + 1;
+            let result = Self::_calculate_token_swap(accounts, amount);
+            match result {
+                Ok(val) => rets[i] = val,
+                Err(e) => rets[i] = 0,
+            }
         }
         return (rets, 0);
     }
+
     fn _calculateNoReturn(
+        accounts: &[AccountInfo],
         amount: u64,
         parts: u64,
         flags: u64
     ) -> (Vec<u64>, u64) {
         return (vec![0;parts as usize], 0);
     }
+
+    fn _calculate_token_swap (
+        accounts: &[AccountInfo],
+        amount_in: u64,
+    ) -> ResultGeneric<u64, ProgramError> {
+        let account_info_iter = &mut accounts.iter();
+        let swap_info = next_account_info(account_info_iter)?;
+        let authority_info = next_account_info(account_info_iter)?;
+        let user_transfer_authority_info = next_account_info(account_info_iter)?;
+        let source_info = next_account_info(account_info_iter)?;
+        let swap_source_info = next_account_info(account_info_iter)?;
+        let swap_destination_info = next_account_info(account_info_iter)?;
+        let destination_info = next_account_info(account_info_iter)?;
+        let pool_mint_info = next_account_info(account_info_iter)?;
+        let pool_fee_account_info = next_account_info(account_info_iter)?;
+        let token_program_info = next_account_info(account_info_iter)?;
+
+        let token_swap = spl_token_swap::state::SwapVersion::unpack(&swap_info.data.borrow())?;
+
+        
+        let source_account =
+            spl_token_swap::processor::Processor::unpack_token_account(swap_source_info, &token_swap.token_program_id())?;
+        let dest_account =
+            spl_token_swap::processor::Processor::unpack_token_account(swap_destination_info, &token_swap.token_program_id())?;
+
+        
+        let result = spl_token_swap::curve::constant_product::swap(
+            to_u128(amount_in)?,
+            to_u128(source_account.amount)?,
+            to_u128(dest_account.amount)?,
+        );
+        match result {
+            None => return Ok(0),
+            Some(val) => {
+                let val_64 = to_u64(val.destination_amount_swapped);
+                match val_64 {
+                    Ok(a) => return Ok(a),
+                    Err(e) => return Err(SwapError::ConversionFailure.into()),
+                }
+            }
+        }
+
+    }
+}
+
+fn to_u128(val: u64) -> Result<u128, SwapError> {
+    val.try_into().map_err(|_| SwapError::ConversionFailure)
+}
+fn to_u64(val: u128) -> Result<u64, SwapError> {
+    val.try_into().map_err(|_| SwapError::ConversionFailure)
 }
 
 impl PrintProgramError for OneSolError {
@@ -365,10 +433,10 @@ mod tests {
     };
     #[test]
     fn test_distribution() {
-        let result = Processor::getExpectedReturnWithGas(10, 100, 0);
-        assert_eq!(
-            result,
-            vec![90, 10]
-        );
+        // let result = Processor::getExpectedReturnWithGas(10, 100, 0);
+        // assert_eq!(
+        //     result,
+        //     vec![90, 10]
+        // );
     }
 }
