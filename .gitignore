@@ -1,6 +1,6 @@
-/node_modules
+node_modules
 *.sw[po]
-/.cargo
+.cargo
 /dist
 .env
 test-ledger/
