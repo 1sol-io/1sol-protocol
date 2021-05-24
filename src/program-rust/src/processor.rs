@@ -125,7 +125,7 @@ impl Processor {
         msg!("Best split is {:?}", best);
         // TODO 这里需要一个计算 对应交易所 amount 的方法
 
-        let token_swap_amount_in = best[0] * amount_in;
+        let token_swap_amount_in = best[0] * amount_in / parts;
         // TODO calculate minimum_amount_out for Token Swap
 
         // Swap OnesolA -> OnesolB
