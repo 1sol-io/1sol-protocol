@@ -115,7 +115,7 @@ impl Processor {
 
         let best = Self::get_expected_return_with_gas(
             amount_in,
-            1, // I don't know which value should be use.
+            find_best_parts(amount_in), // I don't know which value should be use.
             &[&[
                 swap_info.clone(),
                 swap_source_info.clone(),
@@ -125,12 +125,15 @@ impl Processor {
         msg!("Best split is {:?}", best);
         // TODO 这里需要一个计算 对应交易所 amount 的方法
 
+        let token_swap_amount_in = best[0] * amount_in;
+        // TODO calculate minimum_amount_out for Token Swap
+
         // Swap OnesolA -> OnesolB
         msg!("swap onesolA -> onesolB using token-swap");
         // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
-        // TODO do swap here
+
         let instruction = token_swap::Swap {
-            amount_in: amount_in,
+            amount_in: token_swap_amount_in,
             minimum_amount_out: minimum_amount_out,
         };
 
@@ -426,6 +429,16 @@ fn to_u128(val: u64) -> Result<u128, OneSolError> {
 
 fn to_u64(val: u128) -> Result<u64, OneSolError> {
     val.try_into().map_err(|_| OneSolError::ConversionFailure)
+}
+
+fn find_best_parts(amount: u64) -> u64 {
+    if amount > 100 {
+        return 100;
+    }
+    if amount < 2 {
+        return 2;
+    }
+    amount
 }
 
 #[cfg(test)]
