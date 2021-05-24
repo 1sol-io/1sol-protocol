@@ -113,9 +113,10 @@ impl Processor {
         )
         .unwrap();
 
+        let parts = find_best_parts(amount_in);
         let best = Self::get_expected_return_with_gas(
             amount_in,
-            find_best_parts(amount_in), // I don't know which value should be use.
+            parts,
             &[&[
                 swap_info.clone(),
                 swap_source_info.clone(),
