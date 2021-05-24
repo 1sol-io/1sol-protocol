@@ -54,9 +54,7 @@ impl OneSolInstruction {
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
         let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInstruction)?;
         Ok(match tag {
-            0 => {
-                Self::Initialize(Initialize {})
-            }
+            0 => Self::Initialize(Initialize {}),
             1 => {
                 let (amount_in, rest) = Self::unpack_u64(rest)?;
                 let (minimum_amount_out, _rest) = Self::unpack_u64(rest)?;

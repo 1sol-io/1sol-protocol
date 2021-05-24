@@ -6,6 +6,7 @@ use crate::{
     instructions::token_swap,
 };
 
+use core::i64::MIN;
 use num_traits::FromPrimitive;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -17,27 +18,12 @@ use solana_program::{
     program_pack::Pack,
     pubkey::Pubkey,
 };
-// use spl_token_swap::{
-//     state::{SwapState, SwapV1, SwapVersion},
-// };
-use core::i64::MIN;
 use std::convert::TryInto;
 
 /// Program state handler.
 pub struct Processor {}
 
-// #[cfg(debug_assertions)]
-// const TOKEN_SWAP_PROGRAM_ADDRESS: &str = "BgGyXsZxLbug3f4q7W5d4EtsqkQjH1M9pJxUSGQzVGyf";
-// #[cfg(not(debug_assertions))]
-// const TOKEN_SWAP_PROGRAM_ADDRESS: &str = &"SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8";
-
-/// Supporting DEX
-// const DEXES_COUNT: usize = 2;
-// const FLAG_DISABLE_SWAP1: u64 = 0x01;
-// const FLAG_DISABLE_SWAP2: u64 = 0x02;
-
 impl Processor {
-
     /// Unpacks a spl_token `Account`.
     pub fn unpack_token_account(
         account_info: &AccountInfo,
@@ -50,7 +36,6 @@ impl Processor {
                 .map_err(|_| OneSolError::ExpectedAccount)
         }
     }
-
 
     /// Processes an [Instruction](enum.Instruction.html).
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
@@ -113,7 +98,7 @@ impl Processor {
         if *onesol_authority_info.key != Self::authority_id(program_id, onesol_info.key, nonce)? {
             return Err(OneSolError::InvalidProgramAddress.into());
         }
-        let _token_swap = spl_token_swap::state::SwapVersion::unpack(&swap_info.data.borrow())?;
+        // let _token_swap = spl_token_swap::state::SwapVersion::unpack(&swap_info.data.borrow())?;
         // let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
         // transfer AliceA -> OnesolA
         msg!("transfer AliceA -> onesolA");
@@ -128,36 +113,17 @@ impl Processor {
         )
         .unwrap();
 
-        let source_account =
-            Self::unpack_token_account(swap_source_info, &_token_swap.token_program_id())?;
-        let dest_account =
-            Self::unpack_token_account(swap_destination_info, &_token_swap.token_program_id())?;
-        
-        let trade_direction = if *swap_source_info.key == *_token_swap.token_a_account() {
-            spl_token_swap::curve::calculator::TradeDirection::AtoB
-        } else {
-            spl_token_swap::curve::calculator::TradeDirection::BtoA
-        };
-
-        let token_swap_curve_closure = |x| -> Result<u64, OneSolError> {
-            let result = _token_swap
-                    .swap_curve()
-                    .swap(
-                        to_u128(x)?,
-                        to_u128(source_account.amount)?,
-                        to_u128(dest_account.amount)?,
-                        trade_direction,
-                        _token_swap.fees(),
-                    ).ok_or(OneSolError::ZeroTradingTokens)?.source_amount_swapped;
-            to_u64(result)
-        };
-
-        Self::get_expected_return_with_gas(
+        let best = Self::get_expected_return_with_gas(
             amount_in,
-            2, // I don't know which value should be use.
-            // 0,
-            &[token_swap_curve_closure],
+            1, // I don't know which value should be use.
+            &[&[
+                swap_info.clone(),
+                swap_source_info.clone(),
+                swap_destination_info.clone(),
+            ]],
         );
+        msg!("Best split is {:?}", best);
+        // TODO 这里需要一个计算 对应交易所 amount 的方法
 
         // Swap OnesolA -> OnesolB
         msg!("swap onesolA -> onesolB using token-swap");
@@ -207,9 +173,8 @@ impl Processor {
         invoke(&swap, &swap_accounts[..])?;
         // invoke_signed(&swap, &swap_accounts[..], &[&[swap_info]])
 
-        let dest_account = spl_token::state::Account::unpack(
-            &onesol_destination_info.data.borrow()
-        )?;
+        let dest_account =
+            spl_token::state::Account::unpack(&onesol_destination_info.data.borrow())?;
         msg!("onesol_destination amount: {}", dest_account.amount);
         // Transfer OnesolB -> AliceB
         // TODO 这里应该确定一下 amout_out
@@ -272,17 +237,15 @@ impl Processor {
     /// https://github.com/1inch/1inchProtocol/blob/master/contracts/OneSplitBase.sol\#L139
     fn _find_best_distribution(
         s: u64,                 // parts
-        amounts: Vec<Vec<i64>>,  // exchangesReturns
+        amounts: Vec<Vec<i64>>, // exchangesReturns
         size: usize,
     ) -> Vec<u64> {
-        // println!("_findBestDistribution: input {} {:?}", s, amounts);
-
         let n = amounts.len();
 
-        let mut answer: Vec<Vec<i64>> = vec![vec![MIN;(s+1) as usize];n];
-        let mut parent: Vec<Vec<u64>> = vec![vec![0;(s+1) as usize];n];
+        let mut answer: Vec<Vec<i64>> = vec![vec![MIN; (s + 1) as usize]; n];
+        let mut parent: Vec<Vec<u64>> = vec![vec![0; (s + 1) as usize]; n];
 
-        for j in (0..s+1) {
+        for j in 0..(s + 1) {
             answer[0][j as usize] = amounts[0][j as usize] as i64;
             // Aleardy initlize.
             // for i in (1..n) {
@@ -292,35 +255,34 @@ impl Processor {
         }
         // println!("_findBestDistribution: before {:?}", answer);
 
-        for i in (1..n) {
-            for j in (0..s+1) {
+        for i in 1..n {
+            for j in 0..(s + 1) {
                 answer[i as usize][j as usize] = answer[(i - 1) as usize][j as usize];
                 parent[i as usize][j as usize] = j;
 
-                // println!("_findBestDistribution: {} {} {:?}", i, j, answer);
-
-                for k in (1..j+1) {
-                    let a = answer[(i - 1) as usize][(j - k) as usize] + amounts[i as usize][k as usize] as i64;
-                    if (a > answer[i as usize][j as usize]) {
+                for k in 1..(j + 1) {
+                    let a = answer[(i - 1) as usize][(j - k) as usize]
+                        + amounts[i as usize][k as usize] as i64;
+                    if a > answer[i as usize][j as usize] {
                         answer[i as usize][j as usize] = a;
                         parent[i as usize][j as usize] = j - k;
-                        // println!("_findBestDistribution: {} {} {} {:?} ❌ {:?}", i, j, k, parent, answer);
                     }
                 }
             }
         }
-        let mut distribution: Vec<u64> = vec![0;size];
-        // println!("_findBestDistribution: {:?}", answer);
-        // println!("_findBestDistribution: {:?}", parent);
+        let mut distribution: Vec<u64> = vec![0; size];
 
-        let mut partsLeft = s;
-        let mut curExchange: i64 = n as i64 - 1;
-        while partsLeft > 0 {
-            distribution[curExchange as usize] = partsLeft - parent[curExchange as usize][partsLeft as usize];
-            partsLeft = parent[curExchange as usize][partsLeft as usize];
-            curExchange -= 1;
-            /// Keep safe.
-            if curExchange < 0 { break; }
+        let mut parts_left = s;
+        let mut cur_exchange: i64 = n as i64 - 1;
+        while parts_left > 0 {
+            distribution[cur_exchange as usize] =
+                parts_left - parent[cur_exchange as usize][parts_left as usize];
+            parts_left = parent[cur_exchange as usize][parts_left as usize];
+            cur_exchange -= 1;
+            // Keep safe.
+            if cur_exchange < 0 {
+                break;
+            }
         }
 
         // Useless.
@@ -329,41 +291,39 @@ impl Processor {
         return distribution;
     }
 
-    // /// Flags checking.
-    // fn _getAllReserves(flags: u64) -> Vec<fn(u64, u64, u64)->(Vec<u64>, u64)> {
-    //     return vec![
-    //         if flags & FLAG_DISABLE_SWAP1 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap1},
-    //         if flags & FLAG_DISABLE_SWAP2 != 0 {Self::_calculateNoReturn} else {Self::_calculateSwap2},
-    //     ];
-    // }
-
-    fn get_expected_return_with_gas<T: Copy>(
+    /// get expected return with gas
+    /// amount:
+    /// parts:
+    /// accounts:
+    ///     1. Token Swap
+    ///         * Token Swap Program AccountInfo
+    ///         * TokenA AccountInfo
+    ///         * TokenB AccountInfo
+    fn get_expected_return_with_gas(
         amount: u64,
         parts: u64, // Number of pieces source volume could be splitted
-        // flags: u64, // Flags for enabling and disabling some features
-        calculates: &[T], // all reservers
-    ) -> Vec<u64> 
-    where 
-    T: Fn(u64) -> Result<u64, OneSolError> 
-    {
-        let mut atLeastOnePositive = false;
-        // let reserves = Self::_getAllReserves(flags);
-        // matrix[i] = new int256[](parts + 1);
-        let mut matrix: Vec<Vec<i64>> = vec![vec![0;(parts + 1) as usize];calculates.len()];
-        let mut gases = vec![0;calculates.len()];
+        accounts: &[&[AccountInfo]],
+    ) -> Vec<u64> {
+        let mut at_least_one_positive = false;
+        let size = accounts.len();
+        let mut matrix: Vec<Vec<i64>> = vec![vec![0; (parts + 1) as usize]; size];
+        let mut gases = vec![0; size];
 
-        for i in 0..calculates.len() {
-            let (rets, gas) = Self::_calculate_swap(amount, parts, calculates[i as usize]);
+        for i in 0..size {
+            let (rets, gas) = match Self::calculate_swap(i, amount, parts, accounts[i]) {
+                Ok((a, b)) => (a, b),
+                Err(_) => (vec![0], 0),
+            };
             gases[i as usize] = gas;
             for j in 0..rets.len() {
                 matrix[i][j + 1] = (rets[j] as i64) - (gas as i64);
-                atLeastOnePositive = atLeastOnePositive || (matrix[i][j + 1] > 0);
+                at_least_one_positive = at_least_one_positive || (matrix[i][j + 1] > 0);
             }
         }
 
-        if !atLeastOnePositive {
-            for i in 0..calculates.len() {
-                for j in 1..parts+1 {
+        if !at_least_one_positive {
+            for i in 0..size {
+                for j in 1..parts + 1 {
                     if matrix[i as usize][j as usize] == 0 {
                         matrix[i as usize][j as usize] = MIN;
                     }
@@ -371,65 +331,75 @@ impl Processor {
             }
         }
 
-        let distribution = Self::_find_best_distribution(parts, matrix, calculates.len());
-        println!("getExpectedReturnWithGas: {:?}", distribution);
+        let distribution = Self::_find_best_distribution(parts, matrix, size);
 
-        return distribution
+        return distribution;
     }
 
-    /// Generate in 0..amount
-    fn _linearInterpolation(
-        value: u64,
+    fn calculate_swap(
+        index: usize,
+        amount: u64,
         parts: u64,
-    ) -> Vec<u64> {
-        let mut rets = vec![0;parts as usize];
-        for i in (0..parts) {
+        accounts: &[AccountInfo],
+    ) -> Result<(Vec<u64>, u64), ProgramError> {
+        if index == 0 {
+            return Self::calculate_token_swap(amount, parts, accounts);
+        }
+        // if not support swap return 0
+        return Ok((vec![0], 0));
+    }
+
+    fn _linear_interpolation(value: u64, parts: u64) -> Vec<u64> {
+        let mut rets = vec![0; parts as usize];
+        for i in 0..parts {
             rets[i as usize] = value * (i + 1) / parts;
         }
-        return rets
+        rets
     }
 
-    // TODO: Fix name.
-    fn _calculate_swap<T: Copy>(
+    fn calculate_token_swap(
         amount: u64,
         parts: u64,
-        calculate: T,
-    ) -> (Vec<u64>, u64) 
-    where
-        T: Fn(u64) -> Result<u64, OneSolError>
-    {
-        let amounts = Self::_linearInterpolation(amount, parts);
-        let mut rets = vec![0;amounts.len()];
+        accounts: &[AccountInfo],
+    ) -> Result<(Vec<u64>, u64), ProgramError> {
+        let amounts = Self::_linear_interpolation(amount, parts);
+        let mut rets = vec![0; amounts.len()];
+        let account_iters = &mut accounts.iter();
+        let token_swap_program_account = next_account_info(account_iters)?;
+        let source_info = next_account_info(account_iters)?;
+        let destination_info = next_account_info(account_iters)?;
+        let _token_swap =
+            spl_token_swap::state::SwapVersion::unpack(&token_swap_program_account.data.borrow())?;
+        let source_account =
+            Self::unpack_token_account(source_info, &_token_swap.token_program_id())?;
+        let dest_account =
+            Self::unpack_token_account(destination_info, &_token_swap.token_program_id())?;
+
+        let trade_direction = if *source_info.key == *_token_swap.token_a_account() {
+            spl_token_swap::curve::calculator::TradeDirection::AtoB
+        } else {
+            spl_token_swap::curve::calculator::TradeDirection::BtoA
+        };
+
+        let mut source_amount = source_account.amount;
+        let mut destination_amount = dest_account.amount;
+
         for i in 0..amounts.len() {
-            // TODO: Calculate amount out.
-            let out = calculate(amounts[i]);
-            rets[i] = match out {
-                Ok(ret) => ret,
-                Err(_) => 0, //TODO 默认返回0 ?
-            };
-            // rets[i] = amounts[i];
+            let result = _token_swap
+                .swap_curve()
+                .swap(
+                    to_u128(amounts[i])?,
+                    to_u128(source_amount)?,
+                    to_u128(destination_amount)?,
+                    trade_direction,
+                    _token_swap.fees(),
+                )
+                .ok_or(OneSolError::ZeroTradingTokens)?;
+            rets[i] = to_u64(result.destination_amount_swapped)?;
+            source_amount = to_u64(result.new_swap_source_amount)?;
+            destination_amount = to_u64(result.new_swap_destination_amount)?;
         }
-        return (rets, 0);
-    }
-    // fn _calculateSwap2(
-    //     amount: u64,
-    //     parts: u64,
-    //     flags: u64
-    // ) -> (Vec<u64>, u64) {
-    //     let amounts = Self::_linearInterpolation(amount, parts);
-    //     let mut rets = vec![0;amounts.len()];
-    //     for i in (0..amounts.len()) {
-    //         // TODO: Calculate amount out.
-    //         rets[i] = amounts[i] + 1;
-    //     }
-    //     return (rets, 0);
-    // }
-    fn _calculateNoReturn(
-        amount: u64,
-        parts: u64,
-        flags: u64
-    ) -> (Vec<u64>, u64) {
-        return (vec![0;parts as usize], 0);
+        Ok((rets, 0))
     }
 }
 
@@ -461,18 +431,10 @@ fn to_u64(val: u128) -> Result<u64, OneSolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_program::{
-        msg,
-    };
     #[test]
     fn test_distribution() {
-        let token_swap_curve_closure = |x| -> Result<u64, OneSolError> {
-            Ok(x)
-        };
-        let result = Processor::get_expected_return_with_gas(10, 100, &[token_swap_curve_closure]);
-        assert_eq!(
-            result,
-            vec![90, 10]
-        );
+        // let result = Processor::get_expected_return_with_gas(10, 100, vec![token_swap_curve_1, token_swap_curve_2]);
+        // println!("getExpectedReturnWithGas: {:?}", result);
+        // assert_eq!(result, vec![90, 10]);
     }
 }

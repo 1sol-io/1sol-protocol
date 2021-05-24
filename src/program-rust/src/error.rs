@@ -30,11 +30,10 @@ pub enum OneSolError {
     /// ConversionFailure
     #[error("Conversion to u64 failed with an overflow or underflow")]
     ConversionFailure,
-    
+
     /// Given pool token amount results in zero trading tokens
     #[error("Given pool token amount results in zero trading tokens")]
     ZeroTradingTokens,
-
 }
 impl From<OneSolError> for ProgramError {
     fn from(e: OneSolError) -> Self {
