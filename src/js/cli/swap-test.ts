@@ -9,11 +9,12 @@ import {
 import {AccountLayout, Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
 
-import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID} from '../src';
+import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo} from '../src';
 import {sendAndConfirmTransaction} from '../src/util/send-and-confirm-transaction';
 import {newAccountWithLamports} from '../src/util/new-account-with-lamports';
 import {url} from '../src/util/url';
 import {sleep} from '../src/util/sleep';
+import {loadAccount} from '../src/util/account';
 
 export const TOKEN_SWAP_PROGRAM_ID: PublicKey = new PublicKey(
   // 'SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8',
@@ -24,19 +25,16 @@ export const TOKEN_SWAP_PROGRAM_ID: PublicKey = new PublicKey(
 // Token swap
 let tokenSwap: TokenSwap;
 let onesolProtocol: OneSolProtocol;
-// authority of the token and accounts
-let authority: PublicKey;
-// nonce used to generate the authority public key
-let nonce: number;
+
+let payer: Account;
 // owner of the user accounts
 let owner: Account;
-let alice: Account;
-let onesolPro: Account;
-// Token pool
-let tokenPool: Token;
-let tokenAccountPool: PublicKey;
-let feeAccount: PublicKey;
+
+
+let tokenSwapAccount: Account;
+
 // Tokens swapped
+let tokenPool: Token;
 let mintA: Token;
 let mintB: Token;
 let tokenAccountA: PublicKey;
@@ -69,7 +67,7 @@ let currentFeeAmount = 0;
 // need to get slightly tweaked in the two cases.
 const SWAP_AMOUNT_IN = 100000;
 // const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90674;
-const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90661;
+const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90000 : 90000;
 const SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 22273 : 22276;
 const HOST_SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS
   ? Math.floor((SWAP_FEE * HOST_FEE_NUMERATOR) / HOST_FEE_DENOMINATOR)
@@ -99,19 +97,20 @@ async function getConnection(): Promise<Connection> {
   return connection;
 }
 
-export async function createTokenSwap(): Promise<void> {
+export async function prepareTokenSwap(): Promise<void> {
     const connection = await getConnection();
-    const payer = await newAccountWithLamports(connection, 1000000000);
+    payer = await newAccountWithLamports(connection, 1000000000);
     owner = await newAccountWithLamports(connection, 1000000000);
-    alice = new Account();
-    onesolPro = new Account();
-    const tokenSwapAccount = new Account();
-  
+    tokenSwapAccount = new Account();
+    // authority of the token and accounts
+    let authority: PublicKey;
+    // nonce used to generate the authority public key
+    let nonce: number; 
     [authority, nonce] = await PublicKey.findProgramAddress(
       [tokenSwapAccount.publicKey.toBuffer()],
       TOKEN_SWAP_PROGRAM_ID,
     );
-  
+
     console.log('creating pool mint');
     tokenPool = await Token.createMint(
       connection,
@@ -123,9 +122,9 @@ export async function createTokenSwap(): Promise<void> {
     );
   
     console.log('creating pool account');
-    tokenAccountPool = await tokenPool.createAccount(owner.publicKey);
+    const tokenAccountPool = await tokenPool.createAccount(owner.publicKey);
     const ownerKey = SWAP_PROGRAM_OWNER_FEE_ADDRESS || owner.publicKey.toString();
-    feeAccount = await tokenPool.createAccount(new PublicKey(ownerKey));
+    const feeAccount = await tokenPool.createAccount(new PublicKey(ownerKey));
   
     console.log('creating token A');
     mintA = await Token.createMint(
@@ -189,39 +188,49 @@ export async function createTokenSwap(): Promise<void> {
 
     console.log('token swap created');
 
-    const onesolProtocolAccount = new Account();
-    
-    let onesolProtocolAuthority, _nonce
-    
-    [onesolProtocolAuthority, _nonce] = await PublicKey.findProgramAddress(
-      [onesolProtocolAccount.publicKey.toBuffer()],
-        ONESOL_PROTOCOL_PROGRAM_ID,
-    );
-  
-    console.log('creating onesolprotocol');
-    onesolProtocol = await OneSolProtocol.createOneSolProtocol(
-      connection,
-      swapPayer,
-      onesolProtocolAccount,
-      tokenSwapAccount,
-      onesolProtocolAuthority,
-      authority,
-      tokenAccountA,
-      tokenAccountB,
-      tokenPool.publicKey,
-      feeAccount,
-      ONESOL_PROTOCOL_PROGRAM_ID,
-      TOKEN_SWAP_PROGRAM_ID,
-      TOKEN_PROGRAM_ID,
-      _nonce,
-    ) 
 }
 
 export async function swap(): Promise<void> {
-  console.log('Creating swap alice token a account');
+  const connection = await getConnection();
+
+  const alice = new Account();
+  // TokenSwap.loadTokenSwap(connection, tokenSwap.)
+  console.log('creating onesolprotocol');
+  onesolProtocol = await OneSolProtocol.createOneSolProtocol(
+    connection,
+    ONESOL_PROTOCOL_PROGRAM_ID,
+    TOKEN_SWAP_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+  ) 
+
+  const onesolPro = new Account();
+  let onesolProtocolAuthority, nonce
+  [onesolProtocolAuthority, nonce] = await PublicKey.findProgramAddress(
+    [onesolPro.publicKey.toBuffer()],
+      ONESOL_PROTOCOL_PROGRAM_ID,
+  );
+  // TODO create tokenAccount
+
+  let poolAccount = SWAP_PROGRAM_OWNER_FEE_ADDRESS
+  ? await tokenPool.createAccount(owner.publicKey)
+  : null;
+
+
+  const tokenSwapInfo = await loadTokenSwapInfo(
+    connection,
+    tokenSwapAccount.publicKey,
+    TOKEN_SWAP_PROGRAM_ID,
+    poolAccount,
+  )
+
+
+  console.log("load TokenSwapInfo:");
+
+  const userTransferAuthority = new Account();
+
+  console.log('Creating Alice TokenA account');
   let userAccountA = await mintA.createAccount(alice.publicKey);
   await mintA.mintTo(userAccountA, owner, [], SWAP_AMOUNT_IN);
-  const userTransferAuthority = new Account();
   await mintA.approve(
     userAccountA,
     userTransferAuthority.publicKey,
@@ -230,19 +239,21 @@ export async function swap(): Promise<void> {
     SWAP_AMOUNT_IN,
   );
 
-  console.log('UserAccountA: ' + userAccountA.toString())
-  console.log('Creating swap alice token b account');
+  console.log('Alice TokenA Account: ' + userAccountA.toString())
+
+  console.log('Creating Alice TokenB account');
   let userAccountB = await mintB.createAccount(alice.publicKey);
-  console.log('UserAccountB: ' + userAccountB.toString())
-  let poolAccount = SWAP_PROGRAM_OWNER_FEE_ADDRESS
-    ? await tokenPool.createAccount(owner.publicKey)
-    : null;
+  console.log('Alice TokenB Account: ' + userAccountB.toString())
+
   // console.log('poolAccount: ' + poolAccount.toString())
 
-  console.log("Creating swap onesolPro token a account");
+  console.log("Creating Middle TokenA account");
   let onesolAccountA = await mintA.createAccount(onesolPro.publicKey);
-  console.log("Creating swap onesolPro token b account");
+  console.log("Created Middle TokenA account: " + onesolAccountA);
+  console.log("Creating Middle TokenB account");
   let onesolAccountB = await mintB.createAccount(onesolPro.publicKey);
+  console.log("Created Middle TokenB account: " + onesolAccountB);
+
   await mintA.approve(
     onesolAccountA,
     userTransferAuthority.publicKey,
@@ -267,19 +278,24 @@ export async function swap(): Promise<void> {
   console.log("userB:" + info.amount.toNumber());
 
 
+
   console.log('Swapping');
 
+// tokenAccountA,
+//     tokenAccountB,
+
   await onesolProtocol.swap(
+    payer,
+    onesolPro.publicKey,
+    userTransferAuthority,
     userAccountA,
     onesolAccountA,
-    tokenAccountA,
-    tokenAccountB,
     onesolAccountB,
     userAccountB,
-    poolAccount,
-    userTransferAuthority,
     SWAP_AMOUNT_IN,
     SWAP_AMOUNT_OUT,
+    nonce,
+    tokenSwapInfo,
   );
 
   await sleep(500);
@@ -324,4 +340,43 @@ export async function swap(): Promise<void> {
   //   info = await tokenPool.getAccountInfo(poolAccount);
   //   assert(info.amount.toNumber() == HOST_SWAP_FEE);
   // }
+}
+
+export async function loadTokenSwapInfo(
+  connection: Connection,
+  address: PublicKey,
+  programId: PublicKey,
+  hostFeeAccount: PublicKey | null,
+): Promise<TokenSwapInfo> {
+  const data = await loadAccount(connection, address, programId);
+  const tokenSwapData = TokenSwapLayout.decode(data);
+  if (!tokenSwapData.isInitialized) {
+    throw new Error(`Invalid token swap state`);
+  }
+
+  const [authority] = await PublicKey.findProgramAddress(
+    [address.toBuffer()],
+    programId,
+  );
+
+  const poolToken = new PublicKey(tokenSwapData.tokenPool);
+  const feeAccount = new PublicKey(tokenSwapData.feeAccount);
+  const tokenAccountA = new PublicKey(tokenSwapData.tokenAccountA);
+  const tokenAccountB = new PublicKey(tokenSwapData.tokenAccountB);
+  const mintA = new PublicKey(tokenSwapData.mintA);
+  const mintB = new PublicKey(tokenSwapData.mintB);
+  const tokenProgramId = new PublicKey(tokenSwapData.tokenProgramId);
+
+  const curveType = tokenSwapData.curveType;
+
+  return new TokenSwapInfo(
+    programId,
+    address,
+    authority,
+    tokenAccountA,
+    tokenAccountB,
+    poolToken,
+    feeAccount,
+    hostFeeAccount
+  );
 }

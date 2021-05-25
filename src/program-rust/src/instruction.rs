@@ -17,52 +17,55 @@ pub struct Swap {
     pub minimum_amount_out: u64,
     /// nonce used to create validate program address
     pub nonce: u8,
+    /// supportTokenSwap
+    pub token_swap_config: (bool, usize),
 }
 
 /// Instructions supported by the 1sol constracts program
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum OneSolInstruction {
-    ///   Initializes
-    ///
-    /// Do nothing
-    Initialize(Initialize),
-
     /// Swap the tokens in the pool.
     ///
-    ///   0. `[]` onesol-protocol account
-    ///   1. `[]` token-swap account
-    ///   2. `[]` onesol authority
-    ///   3. `[]` token-swap authority
-    ///   4. `[]` user transfer authority
-    ///   5. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
-    ///   6. `[writable]` token_A onesol SOURCE Account, amount is transferable by user transfer authority,
-    ///   7. `[writable]` token_A Base Account to swap INTO.  Must be the SOURCE token.
-    ///   8. `[writable]` token_B Base Account to swap FROM.  Must be the DESTINATION token.
-    ///   9. `[writable]` token_B onesol Account to swap FROM.  Must be the DESTINATION token.
-    ///   9. `[writable]` token_B DESTINATION Account to swap FROM.  Must be the DESTINATION token.
-    ///   7. `[writable]` Pool token mint, to generate trading fees
-    ///   8. `[writable]` Fee account, to receive trading fees
-    ///   9. '[]` Token program id
-    ///   9. '[]` Token-Swap program id
-    ///   10 `[optional, writable]` Host fee account to receive additional trading fees
+    ///   0. `[]` middle token account owner account
+    ///   1. `[]` user transfer authority
+    ///   2. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
+    ///   3. `[writable]` token_A SOURCE middle Account, amount is transferable by user transfer authority,
+    ///   4. `[writable]` token_B DESTINATION middle Account to swap FROM.  Must be the DESTINATION token.
+    ///   5. `[writable]` token_B DESTINATION Account to swap FROM.  Must be the DESTINATION token.
+    ///   6. '[]` Token program id
+    ///
+    ///   7. `[]` token-swap account
+    ///   8. `[]` token-swap authority
+    ///   9. `[writable]` token_A Base Account to swap INTO.  Must be the SOURCE token.
+    ///   10. `[writable]` token_B Base Account to swap FROM.  Must be the DESTINATION token.
+    ///   11. `[writable]` Pool token mint, to generate trading fees
+    ///   12. `[writable]` Fee account, to receive trading fees
+    ///   13. '[]` Token-Swap program id
+    ///   14 `[optional, writable]` Host fee account to receive additional trading fees
     Swap(Swap),
 }
 
 impl OneSolInstruction {
     /// Unpacks a byte buffer into a [OneSolInstruction](enum.OneSolInstruction.html).
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-        let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInstruction)?;
+        let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
         Ok(match tag {
-            0 => Self::Initialize(Initialize {}),
             1 => {
-                let (amount_in, rest) = Self::unpack_u64(rest)?;
-                let (minimum_amount_out, _rest) = Self::unpack_u64(rest)?;
-                let (&nonce, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInstruction)?;
+                let (amount_in, _rest) = Self::unpack_u64(rest)?;
+                let (minimum_amount_out, _rest) = Self::unpack_u64(_rest)?;
+                let (&nonce, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInput)?;
+                let (dexes_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
+
+                let token_swap_config = dexes_configs[0];
+                // let token_swap_config = (true, true);
+
+                // let (&support_token_swap, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInput)?;
                 Self::Swap(Swap {
                     amount_in,
                     minimum_amount_out,
                     nonce,
+                    token_swap_config,
                 })
             }
             _ => return Err(OneSolError::InvalidInstruction.into()),
@@ -81,5 +84,55 @@ impl OneSolInstruction {
         } else {
             Err(OneSolError::InvalidInstruction.into())
         }
+    }
+
+    fn unpack_dexes_configs(input: &[u8]) -> Result<(Vec<(bool, usize)>, &[u8]), ProgramError> {
+        let (&dexes_config_size, _rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
+        if dexes_config_size < 1 {
+            return Err(OneSolError::InvalidInput.into());
+        }
+        let dexes_config_real_size = (dexes_config_size * 2) as usize;
+        if _rest.len() < dexes_config_real_size {
+            return Err(OneSolError::InvalidInput.into());
+        }
+        let (dexes_configs, _rest) = _rest.split_at(dexes_config_real_size);
+        let mut dexes_iter = dexes_configs.chunks(2);
+        let mut result = vec![];
+        loop {
+            let next = dexes_iter.next();
+            if next.is_none() {
+                break;
+            }
+            let r = next.unwrap();
+            result.push((r[0] != 0, r[1] as usize));
+        }
+        Ok((result, _rest))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_unpack_dexes_configs() {
+        let r = OneSolInstruction::unpack_dexes_configs(&[0]);
+        assert_eq!(r.is_err(), true);
+        let r = OneSolInstruction::unpack_dexes_configs(&[1]);
+        assert_eq!(r.is_err(), true);
+        let r = OneSolInstruction::unpack_dexes_configs(&[1, 0]);
+        assert_eq!(r.is_err(), true);
+        let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1]);
+        assert_eq!(r.is_ok(), true);
+        let (v, rest) = r.unwrap();
+        assert_eq!(v, vec![(true, 1)]);
+        assert_eq!(rest.len(), 0);
+        let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 2]);
+        assert_eq!(r.is_ok(), true);
+        let (v, rest) = r.unwrap();
+        assert_eq!(v, vec![(true, 1)]);
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest, &[2]);
     }
 }
