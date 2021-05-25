@@ -249,8 +249,8 @@ impl Processor {
         let mut answer: Vec<Vec<i64>> = vec![vec![MIN; (s + 1) as usize]; n];
         let mut parent: Vec<Vec<u64>> = vec![vec![0; (s + 1) as usize]; n];
 
-        for j in 0..(s + 1) {
-            answer[0][j as usize] = amounts[0][j as usize] as i64;
+        for j in 0..(s + 1) as usize {
+            answer[0][j] = amounts[0][j] as i64;
             // Aleardy initlize.
             // for i in (1..n) {
             //     answer[i as usize][j as usize] = MIN;
@@ -288,11 +288,7 @@ impl Processor {
                 break;
             }
         }
-
-        // Useless.
-        // let returnAmount = if (answer[(n - 1) as usize][s as usize] == MIN) { 0 } else { answer[(n - 1) as usize][s as usize] as u64 };
-
-        return distribution;
+        distribution
     }
 
     /// get expected return with gas
