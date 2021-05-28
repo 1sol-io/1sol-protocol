@@ -203,10 +203,10 @@ export class OneSolProtocol{
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
     nonce: number,
-    tokenSwapInfo: TokenSwapInfo | null,
+    tokenSwap0Info: TokenSwapInfo | null,
     tokenSwap1Info: TokenSwapInfo | null,
   ): Promise<TransactionSignature> {
-    if (tokenSwapInfo === null && tokenSwap1Info === null) {
+    if (tokenSwap0Info === null && tokenSwap1Info === null) {
       throw new Error('tokenSwapInfo and tokenSwap1Info all null');
     }
     return await sendAndConfirmTransaction(
@@ -221,7 +221,7 @@ export class OneSolProtocol{
           middleDestination,
           userDestination,
           this.tokenProgramId,
-          tokenSwapInfo,
+          tokenSwap0Info,
           tokenSwap1Info,
           this.protocolProgramId,
           amountIn,
@@ -243,7 +243,7 @@ export class OneSolProtocol{
     userDestination: PublicKey,
     tokenProgramId: PublicKey,
     // token-swap key begin
-    tokenSwapInfo: TokenSwapInfo | null,
+    tokenSwap0Info: TokenSwapInfo | null,
     tokenSwap1Info: TokenSwapInfo | null,
     // tokenSwap: PublicKey,
     // tokenSwapAuthority: PublicKey,
@@ -266,17 +266,17 @@ export class OneSolProtocol{
       Layout.uint64('minimumAmountOut'),
       BufferLayout.u8('nonce'),
       BufferLayout.u8('dexesConfig'),
-      BufferLayout.u8('tokenSwapFlag'),
-      BufferLayout.u8('tokenSwapAccountsSize'),
+      BufferLayout.u8('tokenSwap0Flag'),
+      BufferLayout.u8('tokenSwap0AccountsSize'),
       BufferLayout.u8('tokenSwap1Flag'),
       BufferLayout.u8('tokenSwap1AccountsSize'),
     ]);
 
-    let tsKeys = Array<AccountMeta>();
-    let tsFlag = 0;
-    if (tokenSwapInfo !== null){
-      tsFlag = 1;
-      tsKeys = tokenSwapInfo.toKeys();
+    let ts0Keys = Array<AccountMeta>();
+    let ts0Flag = 0;
+    if (tokenSwap0Info !== null){
+      ts0Flag = 1;
+      ts0Keys = tokenSwap0Info.toKeys();
     };
 
     let ts1Keys = Array<AccountMeta>();
@@ -294,10 +294,10 @@ export class OneSolProtocol{
         minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
         nonce: nonce,
         dexesConfig: 2,
-        tokenSwapFlag: tsFlag,
-        tokenSwapAccountsSize: tsKeys.length,
+        tokenSwap0Flag: ts0Flag,
+        tokenSwap0AccountsSize: ts0Keys.length,
         tokenSwap1Flag: ts1Flag,
-        tokenSwap1AccountsSize: tsKeys.length,
+        tokenSwap1AccountsSize: ts1Keys.length,
       },
       data,
     );
@@ -313,7 +313,7 @@ export class OneSolProtocol{
 
      
     ];
-    for (var k of tsKeys) {
+    for (var k of ts0Keys) {
       keys.push(
         k,
       );

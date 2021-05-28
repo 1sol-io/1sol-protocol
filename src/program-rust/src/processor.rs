@@ -111,22 +111,22 @@ impl Processor {
         let mut calculate_swaps = vec![];
 
         // load token-swap data
-        let t1_count = if dex_configs[0].0 {
+        let ts0_accounts_count = if dex_configs[0].0 {
             dex_configs[0].1
         } else {
             0
         };
-        if rest.len() < t1_count {
+        if rest.len() < ts0_accounts_count {
             return Err(OneSolError::InvalidInstruction.into());
         }
-        let (t1_accounts, rest) = rest.split_at(t1_count);
-        let token_swap_data = if dex_configs[0].0 {
+        let (ts0_accounts, rest) = rest.split_at(ts0_accounts_count);
+        let token_swap_0_data = if dex_configs[0].0 {
             let d = Self::init_token_swap_data(
                 token_program_info.clone(),
                 user_transfer_authority_info.clone(),
                 middle_source_info.clone(),
                 middle_destination_info.clone(),
-                t1_accounts,
+                ts0_accounts,
             )?;
             calculate_swaps.push(d.1);
             Some((d.0, d.2))
@@ -134,22 +134,22 @@ impl Processor {
             None
         };
         // load token-swap-2 data
-        let t2_count = if dex_configs[1].0 {
+        let ts1_count = if dex_configs[1].0 {
             dex_configs[1].1
         } else {
             0
         };
-        if rest.len() < t2_count {
+        if rest.len() < ts1_count {
             return Err(OneSolError::InvalidInstruction.into());
         }
-        let (t2_accounts, _rest) = rest.split_at(t2_count);
-        let token_swap_2_data = if dex_configs[1].0 {
+        let (ts1_accounts, _rest) = rest.split_at(ts1_count);
+        let token_swap_1_data = if dex_configs[1].0 {
             let d = Self::init_token_swap_data(
                 token_program_info.clone(),
                 user_transfer_authority_info.clone(),
                 middle_source_info.clone(),
                 middle_destination_info.clone(),
-                t2_accounts,
+                ts1_accounts,
             )?;
             calculate_swaps.push(d.1);
             Some((d.0, d.2))
@@ -201,12 +201,12 @@ impl Processor {
                 token_swap_amount_in
             );
             // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
-            let d = token_swap_data.unwrap();
+            let data = token_swap_0_data.unwrap();
             Self::invoke_token_swap(
                 token_swap_amount_in,
                 token_swap_minimum_amount_out,
-                &d.0[..],
-                &d.1[..],
+                &data.0[..],
+                &data.1[..],
             )?;
         }
 
@@ -222,12 +222,12 @@ impl Processor {
                 "swap onesolA -> onesolB using token-swap-2, amount_in: {}",
                 token_swap_amount_in
             );
-            let d = token_swap_2_data.unwrap();
+            let data = token_swap_1_data.unwrap();
             Self::invoke_token_swap(
                 token_swap_amount_in,
                 token_swap_minimum_amount_out,
-                &d.0[..],
-                &d.1[..],
+                &data.0[..],
+                &data.1[..],
             )?;
         }
 
