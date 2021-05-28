@@ -296,6 +296,7 @@ export async function swap(): Promise<void> {
     SWAP_AMOUNT_OUT,
     nonce,
     tokenSwapInfo,
+    null,
   );
 
   await sleep(500);

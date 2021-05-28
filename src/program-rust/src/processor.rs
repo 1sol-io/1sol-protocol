@@ -49,7 +49,7 @@ impl Processor {
                 amount_in,
                 minimum_amount_out,
                 nonce,
-                token_swap_config,
+                dex_configs,
             }) => {
                 msg!("Instruction: Swap");
                 Self::process_swap(
@@ -57,7 +57,7 @@ impl Processor {
                     amount_in,
                     minimum_amount_out,
                     nonce,
-                    token_swap_config,
+                    dex_configs,
                     accounts,
                 )
             }
@@ -70,12 +70,13 @@ impl Processor {
         amount_in: u64,
         minimum_amount_out: u64,
         nonce: u8,
-        token_swap_config: (bool, usize),
+        dex_configs: [(bool, usize); 2],
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         msg!("start process swap");
 
-        let account_info_iter = &mut accounts.iter();
+        let (account_infos, rest) = accounts.split_at(7);
+        let account_info_iter = &mut account_infos.iter();
         msg!("start process swap, accounts.len: {}", accounts.len());
         let middle_owner_info = next_account_info(account_info_iter)?;
         let user_transfer_authority_info = next_account_info(account_info_iter)?;
@@ -110,59 +111,48 @@ impl Processor {
         let mut calculate_swaps = vec![];
 
         // load token-swap data
-        let token_swap_data = if token_swap_config.0 {
-            let swap_info = next_account_info(account_info_iter)?;
-            let swap_authority_info = next_account_info(account_info_iter)?;
-            let swap_source_info = next_account_info(account_info_iter)?;
-            let swap_destination_info = next_account_info(account_info_iter)?;
-            let pool_mint_info = next_account_info(account_info_iter)?;
-            let pool_fee_account_info = next_account_info(account_info_iter)?;
-            let token_swap_program_info = next_account_info(account_info_iter)?;
-            let host_fee_account_info = if token_swap_config.1 == 8 {
-                Some(next_account_info(account_info_iter)?)
-            } else {
-                None
-            };
-            let mut host_fee_pubkey: Option<&Pubkey> = None;
-            if let Some(_host_fee_account_info) = host_fee_account_info {
-                host_fee_pubkey = Some(_host_fee_account_info.key);
-            }
-
-            let keys = vec![
-                Some(token_swap_program_info.key),
-                Some(token_program_info.key),
-                Some(swap_info.key),
-                Some(swap_authority_info.key),
-                Some(user_transfer_authority_info.key),
-                Some(middle_source_info.key),
-                Some(swap_source_info.key),
-                Some(swap_destination_info.key),
-                Some(middle_destination_info.key),
-                Some(pool_mint_info.key),
-                Some(pool_fee_account_info.key),
-                host_fee_pubkey,
-            ];
-            let mut swap_accounts = vec![
-                swap_info.clone(),
-                swap_authority_info.clone(),
+        let t1_count = if dex_configs[0].0 {
+            dex_configs[0].1
+        } else {
+            0
+        };
+        if rest.len() < t1_count {
+            return Err(OneSolError::InvalidInstruction.into());
+        }
+        let (t1_accounts, rest) = rest.split_at(t1_count);
+        let token_swap_data = if dex_configs[0].0 {
+            let d = Self::init_token_swap_data(
+                token_program_info.clone(),
                 user_transfer_authority_info.clone(),
                 middle_source_info.clone(),
-                swap_source_info.clone(),
-                swap_destination_info.clone(),
                 middle_destination_info.clone(),
-                pool_mint_info.clone(),
-                pool_fee_account_info.clone(),
+                t1_accounts,
+            )?;
+            calculate_swaps.push(d.1);
+            Some((d.0, d.2))
+        } else {
+            None
+        };
+        // load token-swap-2 data
+        let t2_count = if dex_configs[1].0 {
+            dex_configs[1].1
+        } else {
+            0
+        };
+        if rest.len() < t2_count {
+            return Err(OneSolError::InvalidInstruction.into());
+        }
+        let (t2_accounts, _rest) = rest.split_at(t2_count);
+        let token_swap_2_data = if dex_configs[1].0 {
+            let d = Self::init_token_swap_data(
                 token_program_info.clone(),
-            ];
-            if let Some(_host_fee_account_info) = host_fee_account_info {
-                swap_accounts.push(_host_fee_account_info.clone());
-            }
-            calculate_swaps.push(vec![
-                swap_info.clone(),
-                swap_source_info.clone(),
-                swap_destination_info.clone(),
-            ]);
-            Some((swap_accounts, keys))
+                user_transfer_authority_info.clone(),
+                middle_source_info.clone(),
+                middle_destination_info.clone(),
+                t2_accounts,
+            )?;
+            calculate_swaps.push(d.1);
+            Some((d.0, d.2))
         } else {
             None
         };
@@ -199,15 +189,12 @@ impl Processor {
 
         let mut best_index: usize = 0;
 
-        if token_swap_config.0 {
+        if dex_configs[0].0 {
             // run Token Swap swap
             let token_swap_amount_in = best[best_index] * amount_in / parts;
             let token_swap_minimum_amount_out = best[best_index] * minimum_amount_out / parts;
 
             best_index += 1;
-
-            // TODO calculate minium_amount_out for token_swap
-
             // Swap OnesolA -> OnesolB
             msg!(
                 "swap onesolA -> onesolB using token-swap, amount_in: {}",
@@ -215,34 +202,34 @@ impl Processor {
             );
             // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
             let d = token_swap_data.unwrap();
-            let token_swap_accounts = d.0;
-            let keys = d.1;
-
-            let instruction = token_swap::Swap {
-                // amount_in: token_swap_amount_in,
-                amount_in: token_swap_amount_in,
-                minimum_amount_out: token_swap_minimum_amount_out,
-            };
-
-            let swap = token_swap::swap(
-                keys[0].unwrap(),
-                keys[1].unwrap(),
-                keys[2].unwrap(),
-                keys[3].unwrap(),
-                keys[4].unwrap(),
-                keys[5].unwrap(),
-                keys[6].unwrap(),
-                keys[7].unwrap(),
-                keys[8].unwrap(),
-                keys[9].unwrap(),
-                keys[10].unwrap(),
-                keys[11],
-                instruction,
+            Self::invoke_token_swap(
+                token_swap_amount_in,
+                token_swap_minimum_amount_out,
+                &d.0[..],
+                &d.1[..],
             )?;
-            // invoke token-swap
-            invoke(&swap, &token_swap_accounts[..])?;
         }
-        // invoke_signed(&swap, &swap_accounts[..], &[&[swap_info]])
+
+        // token_swap_2
+        if dex_configs[1].0 {
+            // run Token Swap swap
+            let token_swap_amount_in = best[best_index] * amount_in / parts;
+            let token_swap_minimum_amount_out = best[best_index] * minimum_amount_out / parts;
+            // if have new dex shoud run best_index += 1
+            // best_index += 1;
+            // Swap OnesolA -> OnesolB
+            msg!(
+                "swap onesolA -> onesolB using token-swap-2, amount_in: {}",
+                token_swap_amount_in
+            );
+            let d = token_swap_2_data.unwrap();
+            Self::invoke_token_swap(
+                token_swap_amount_in,
+                token_swap_minimum_amount_out,
+                &d.0[..],
+                &d.1[..],
+            )?;
+        }
 
         let dest_account =
             spl_token::state::Account::unpack(&middle_destination_info.data.borrow())?;
@@ -268,6 +255,109 @@ impl Processor {
         .unwrap();
 
         Ok(())
+    }
+
+    /// init token swap data
+    pub fn init_token_swap_data<'a>(
+        token_program_info: AccountInfo<'a>,
+        user_transfer_authority_info: AccountInfo<'a>,
+        middle_source_info: AccountInfo<'a>,
+        middle_destination_info: AccountInfo<'a>,
+        accounts: &[AccountInfo<'a>],
+    ) -> Result<
+        (
+            Vec<AccountInfo<'a>>,
+            Vec<AccountInfo<'a>>,
+            Vec<Option<&'a Pubkey>>,
+        ),
+        ProgramError,
+    > {
+        let account_info_iter = &mut accounts.iter();
+        let swap_info = next_account_info(account_info_iter)?;
+        let swap_authority_info = next_account_info(account_info_iter)?;
+        let swap_source_info = next_account_info(account_info_iter)?;
+        let swap_destination_info = next_account_info(account_info_iter)?;
+        let pool_mint_info = next_account_info(account_info_iter)?;
+        let pool_fee_account_info = next_account_info(account_info_iter)?;
+        let token_swap_program_info = next_account_info(account_info_iter)?;
+        let host_fee_account_info = next_account_info(account_info_iter);
+
+        let host_fee_pubkey = if let Ok(_host_fee_account_info) = host_fee_account_info {
+            Some(_host_fee_account_info.key)
+        } else {
+            None
+        };
+
+        let keys = vec![
+            Some(token_swap_program_info.key),
+            Some(token_program_info.key),
+            Some(swap_info.key),
+            Some(swap_authority_info.key),
+            Some(user_transfer_authority_info.key),
+            Some(middle_source_info.key),
+            Some(swap_source_info.key),
+            Some(swap_destination_info.key),
+            Some(middle_destination_info.key),
+            Some(pool_mint_info.key),
+            Some(pool_fee_account_info.key),
+            host_fee_pubkey,
+        ];
+        let mut swap_accounts = vec![
+            swap_info.clone(),
+            swap_authority_info.clone(),
+            user_transfer_authority_info.clone(),
+            middle_source_info.clone(),
+            swap_source_info.clone(),
+            swap_destination_info.clone(),
+            middle_destination_info.clone(),
+            pool_mint_info.clone(),
+            pool_fee_account_info.clone(),
+            token_program_info.clone(),
+        ];
+        if let Ok(_host_fee_account_info) = host_fee_account_info {
+            swap_accounts.push(_host_fee_account_info.clone());
+        };
+        Ok((
+            swap_accounts,
+            vec![
+                swap_info.clone(),
+                swap_source_info.clone(),
+                swap_destination_info.clone(),
+            ],
+            keys,
+        ))
+    }
+
+    /// invoke
+    pub fn invoke_token_swap<'a>(
+        amount_in: u64,
+        minimum_amount_out: u64,
+        account_infos: &[AccountInfo],
+        keys: &[Option<&Pubkey>],
+    ) -> Result<(), ProgramError> {
+        let instruction = token_swap::Swap {
+            // amount_in: token_swap_amount_in,
+            amount_in: amount_in,
+            minimum_amount_out: minimum_amount_out,
+        };
+
+        let swap = token_swap::swap(
+            keys[0].unwrap(),
+            keys[1].unwrap(),
+            keys[2].unwrap(),
+            keys[3].unwrap(),
+            keys[4].unwrap(),
+            keys[5].unwrap(),
+            keys[6].unwrap(),
+            keys[7].unwrap(),
+            keys[8].unwrap(),
+            keys[9].unwrap(),
+            keys[10].unwrap(),
+            keys[11],
+            instruction,
+        )?;
+        // invoke token-swap
+        invoke(&swap, account_infos)
     }
 
     /// Issue a spl_token `Transfer` instruction.
