@@ -2,7 +2,7 @@
 
 use crate::{
     error::OneSolError,
-    instruction::{Initialize, OneSolInstruction, Swap},
+    instruction::{OneSolInstruction, Swap},
     instructions::token_swap,
 };
 
@@ -12,11 +12,15 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     decode_error::DecodeError,
     entrypoint::ProgramResult,
+    log::sol_log_compute_units,
     msg,
     program::{invoke, invoke_signed},
     program_error::{PrintProgramError, ProgramError},
     program_pack::Pack,
     pubkey::Pubkey,
+    rent::Rent,
+    system_instruction::create_account,
+    sysvar::Sysvar,
 };
 use std::convert::TryInto;
 
@@ -41,150 +45,207 @@ impl Processor {
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
         let instruction = OneSolInstruction::unpack(input)?;
         match instruction {
-            OneSolInstruction::Initialize(Initialize {}) => {
-                msg!("Instruction: Initialize");
-                Ok(())
-            }
             OneSolInstruction::Swap(Swap {
                 amount_in,
                 minimum_amount_out,
                 nonce,
+                token_swap_config,
             }) => {
                 msg!("Instruction: Swap");
-                Self::process_swap(program_id, amount_in, minimum_amount_out, nonce, accounts)
+                Self::process_swap(
+                    program_id,
+                    amount_in,
+                    minimum_amount_out,
+                    nonce,
+                    token_swap_config,
+                    accounts,
+                )
             }
         }
     }
 
-    /// process
-    pub fn process_initialize(program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
-        msg!("start process_initialize, {}", program_id);
-        Ok(())
-    }
-
     /// Processes an [Swap](enum.Instruction.html).
     pub fn process_swap(
-        program_id: &Pubkey,
+        _program_id: &Pubkey,
         amount_in: u64,
         minimum_amount_out: u64,
         nonce: u8,
+        token_swap_config: (bool, usize),
         accounts: &[AccountInfo],
     ) -> ProgramResult {
+        msg!("start process swap");
+
         let account_info_iter = &mut accounts.iter();
         msg!("start process swap, accounts.len: {}", accounts.len());
-        let onesol_info = next_account_info(account_info_iter)?;
-        let swap_info = next_account_info(account_info_iter)?;
-        let onesol_authority_info = next_account_info(account_info_iter)?;
-        let swap_authority_info = next_account_info(account_info_iter)?;
+        let middle_owner_info = next_account_info(account_info_iter)?;
         let user_transfer_authority_info = next_account_info(account_info_iter)?;
+        // let onesol_authority_info = next_account_info(account_info_iter)?;
+        // let user_transfer_authority_info = next_account_info(account_info_iter)?;
         let source_info = next_account_info(account_info_iter)?;
-        let onesol_source_info = next_account_info(account_info_iter)?;
-        let swap_source_info = next_account_info(account_info_iter)?;
-        let swap_destination_info = next_account_info(account_info_iter)?;
-        let onesol_destination_info = next_account_info(account_info_iter)?;
+        let middle_source_info = next_account_info(account_info_iter)?;
+        let middle_destination_info = next_account_info(account_info_iter)?;
         let destination_info = next_account_info(account_info_iter)?;
-        let pool_mint_info = next_account_info(account_info_iter)?;
-        let pool_fee_account_info = next_account_info(account_info_iter)?;
         let token_program_info = next_account_info(account_info_iter)?;
-        let token_swap_account_info = next_account_info(account_info_iter)?;
-        let mut host_fee_pubkey: Option<&Pubkey> = None;
-        let host_fee_account_info = next_account_info(account_info_iter);
-        if let Ok(_host_fee_account_info) = host_fee_account_info {
-            host_fee_pubkey = Some(_host_fee_account_info.key);
+
+        let token_program_id = *token_program_info.key;
+        let middle_source_token =
+            Self::unpack_token_account(middle_source_info, &token_program_id)?;
+        let source_token = Self::unpack_token_account(source_info, &token_program_id)?;
+        if middle_source_token.mint != source_token.mint {
+            return Err(OneSolError::InvalidInput.into());
         }
-        if onesol_info.owner != program_id {
-            return Err(ProgramError::IncorrectProgramId);
+        // if *user_transfer_authority_info.key != middle_source_token.delegate {
+        //     return Err(OneSolError::InvalidOwner.into());
+        // }
+
+        let middle_destination_token =
+            Self::unpack_token_account(middle_destination_info, &token_program_id)?;
+        let destination_token = Self::unpack_token_account(destination_info, &token_program_id)?;
+        if middle_destination_token.mint != destination_token.mint {
+            return Err(OneSolError::InvalidInput.into());
+        }
+        // if *user_transfer_authority_info.key != middle_destination_token.owner {
+        //     return Err(OneSolError::InvalidOwner.into());
+        // }
+        let mut calculate_swaps = vec![];
+
+        // load token-swap data
+        let token_swap_data = if token_swap_config.0 {
+            let swap_info = next_account_info(account_info_iter)?;
+            let swap_authority_info = next_account_info(account_info_iter)?;
+            let swap_source_info = next_account_info(account_info_iter)?;
+            let swap_destination_info = next_account_info(account_info_iter)?;
+            let pool_mint_info = next_account_info(account_info_iter)?;
+            let pool_fee_account_info = next_account_info(account_info_iter)?;
+            let token_swap_program_info = next_account_info(account_info_iter)?;
+            let host_fee_account_info = if token_swap_config.1 == 8 {
+                Some(next_account_info(account_info_iter)?)
+            } else {
+                None
+            };
+            let mut host_fee_pubkey: Option<&Pubkey> = None;
+            if let Some(_host_fee_account_info) = host_fee_account_info {
+                host_fee_pubkey = Some(_host_fee_account_info.key);
+            }
+
+            let keys = vec![
+                Some(token_swap_program_info.key),
+                Some(token_program_info.key),
+                Some(swap_info.key),
+                Some(swap_authority_info.key),
+                Some(user_transfer_authority_info.key),
+                Some(middle_source_info.key),
+                Some(swap_source_info.key),
+                Some(swap_destination_info.key),
+                Some(middle_destination_info.key),
+                Some(pool_mint_info.key),
+                Some(pool_fee_account_info.key),
+                host_fee_pubkey,
+            ];
+            let mut swap_accounts = vec![
+                swap_info.clone(),
+                swap_authority_info.clone(),
+                user_transfer_authority_info.clone(),
+                middle_source_info.clone(),
+                swap_source_info.clone(),
+                swap_destination_info.clone(),
+                middle_destination_info.clone(),
+                pool_mint_info.clone(),
+                pool_fee_account_info.clone(),
+                token_program_info.clone(),
+            ];
+            if let Some(_host_fee_account_info) = host_fee_account_info {
+                swap_accounts.push(_host_fee_account_info.clone());
+            }
+            calculate_swaps.push(vec![
+                swap_info.clone(),
+                swap_source_info.clone(),
+                swap_destination_info.clone(),
+            ]);
+            Some((swap_accounts, keys))
+        } else {
+            None
         };
-        if *onesol_authority_info.key != Self::authority_id(program_id, onesol_info.key, nonce)? {
-            return Err(OneSolError::InvalidProgramAddress.into());
-        }
-        // let _token_swap = spl_token_swap::state::SwapVersion::unpack(&swap_info.data.borrow())?;
-        // let _token_swap = token_swap::SwapVersion::unpack(&swap_info.data.borrow())?;
-        // transfer AliceA -> OnesolA
+
         msg!("transfer AliceA -> onesolA");
+        // transfer AliceA -> OnesolA
         Self::token_transfer(
-            onesol_info.key,
+            middle_owner_info.key,
             token_program_info.clone(),
             source_info.clone(),
-            onesol_source_info.clone(),
+            middle_source_info.clone(),
             user_transfer_authority_info.clone(),
             nonce,
             amount_in,
         )
         .unwrap();
 
-        let parts = find_best_parts(amount_in);
-        let best = Self::get_expected_return_with_gas(
-            amount_in,
-            parts,
-            &[&[
-                swap_info.clone(),
-                swap_source_info.clone(),
-                swap_destination_info.clone(),
-            ]],
-        );
-        msg!("Best split is {:?}", best);
-        // TODO 这里需要一个计算 对应交易所 amount 的方法
-
-        let token_swap_amount_in = best[0] * amount_in / parts;
-        // TODO calculate minimum_amount_out for Token Swap
-
-        // Swap OnesolA -> OnesolB
-        msg!("swap onesolA -> onesolB using token-swap");
-        // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
-
-        let instruction = token_swap::Swap {
-            amount_in: token_swap_amount_in,
-            minimum_amount_out: minimum_amount_out,
-        };
-
-        let swap = token_swap::swap(
-            token_swap_account_info.key,
-            token_program_info.key,
-            swap_info.key,
-            swap_authority_info.key,
-            user_transfer_authority_info.key,
-            onesol_source_info.key,
-            swap_source_info.key,
-            swap_destination_info.key,
-            onesol_destination_info.key,
-            pool_mint_info.key,
-            pool_fee_account_info.key,
-            host_fee_pubkey,
-            instruction,
-        )?;
-        let mut swap_accounts = vec![
-            swap_info.clone(),
-            swap_authority_info.clone(),
-            user_transfer_authority_info.clone(),
-            onesol_source_info.clone(),
-            swap_source_info.clone(),
-            swap_destination_info.clone(),
-            onesol_destination_info.clone(),
-            pool_mint_info.clone(),
-            pool_fee_account_info.clone(),
-            token_program_info.clone(),
-        ];
-        if let Ok(_host_fee_account_info) = host_fee_account_info {
-            swap_accounts.push(_host_fee_account_info.clone());
-        }
-        // invoke tokenswap
-        msg!(
-            "swap onesolA -> onesolB invoke token_swap {}, {}",
-            swap.accounts.len(),
-            swap_accounts.len()
-        );
-
         let dest_account1 =
-            spl_token::state::Account::unpack(&onesol_destination_info.data.borrow())?;
+            spl_token::state::Account::unpack(&middle_destination_info.data.borrow())?;
 
         let amount1 = dest_account1.amount;
 
-        invoke(&swap, &swap_accounts[..])?;
+        let (best, parts) = if calculate_swaps.len() > 1 {
+            let _parts = find_best_parts(amount_in);
+            msg!("best parts: {}", _parts);
+            sol_log_compute_units();
+            let _best = Self::get_expected_return_with_gas(amount_in, _parts, &calculate_swaps[..]);
+            sol_log_compute_units();
+            msg!("Best split is {:?}", _best);
+            (_best, _parts)
+        } else {
+            (vec![1], 1)
+        };
+
+        let mut best_index: usize = 0;
+
+        if token_swap_config.0 {
+            // run Token Swap swap
+            let token_swap_amount_in = best[best_index] * amount_in / parts;
+            let token_swap_minimum_amount_out = best[best_index] * minimum_amount_out / parts;
+
+            best_index += 1;
+
+            // TODO calculate minium_amount_out for token_swap
+
+            // Swap OnesolA -> OnesolB
+            msg!(
+                "swap onesolA -> onesolB using token-swap, amount_in: {}",
+                token_swap_amount_in
+            );
+            // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
+            let d = token_swap_data.unwrap();
+            let token_swap_accounts = d.0;
+            let keys = d.1;
+
+            let instruction = token_swap::Swap {
+                // amount_in: token_swap_amount_in,
+                amount_in: token_swap_amount_in,
+                minimum_amount_out: token_swap_minimum_amount_out,
+            };
+
+            let swap = token_swap::swap(
+                keys[0].unwrap(),
+                keys[1].unwrap(),
+                keys[2].unwrap(),
+                keys[3].unwrap(),
+                keys[4].unwrap(),
+                keys[5].unwrap(),
+                keys[6].unwrap(),
+                keys[7].unwrap(),
+                keys[8].unwrap(),
+                keys[9].unwrap(),
+                keys[10].unwrap(),
+                keys[11],
+                instruction,
+            )?;
+            // invoke token-swap
+            invoke(&swap, &token_swap_accounts[..])?;
+        }
         // invoke_signed(&swap, &swap_accounts[..], &[&[swap_info]])
 
         let dest_account =
-            spl_token::state::Account::unpack(&onesol_destination_info.data.borrow())?;
+            spl_token::state::Account::unpack(&middle_destination_info.data.borrow())?;
         msg!(
             "onesol_destination amount: {}, should tranfer: {}",
             dest_account.amount,
@@ -194,9 +255,9 @@ impl Processor {
         // TODO 这里应该确定一下 amout_out
         msg!("transfer OneSolB -> AliceB");
         Self::token_transfer(
-            onesol_info.key,
+            middle_owner_info.key,
             token_program_info.clone(),
-            onesol_destination_info.clone(),
+            middle_destination_info.clone(),
             destination_info.clone(),
             user_transfer_authority_info.clone(),
             // _token_swap.nonce(),
@@ -236,6 +297,40 @@ impl Processor {
             &[source, destination, authority, token_program],
             signers,
         )
+    }
+
+    /// create token account
+    pub fn token_create_account<'a>(
+        token_program: AccountInfo<'a>,
+        payer_info: AccountInfo<'a>,
+        token_info: AccountInfo<'a>,
+        onesol_account_info: AccountInfo<'a>,
+        token_account_info: AccountInfo<'a>,
+    ) -> Result<(), ProgramError> {
+        let rent = &Rent::from_account_info(&token_program)?;
+        let l = 1.max(rent.minimum_balance(spl_token::state::Account::get_packed_len()));
+
+        let create_account_instruction = create_account(
+            payer_info.key,
+            token_account_info.key,
+            l,
+            spl_token::state::Account::get_packed_len() as u64,
+            token_program.key,
+        );
+
+        invoke(
+            &create_account_instruction,
+            &[payer_info.clone(), token_account_info.clone()],
+        )?;
+
+        let token_create_init_instruction = spl_token::instruction::initialize_account(
+            token_program.key,
+            token_account_info.key,
+            token_info.key,
+            onesol_account_info.key,
+        )?;
+
+        invoke(&token_create_init_instruction, &[])
     }
 
     /// Calculates the authority id by generating a program address.
@@ -312,7 +407,7 @@ impl Processor {
     fn get_expected_return_with_gas(
         amount: u64,
         parts: u64, // Number of pieces source volume could be splitted
-        accounts: &[&[AccountInfo]],
+        accounts: &[Vec<AccountInfo>],
     ) -> Vec<u64> {
         let mut at_least_one_positive = false;
         let size = accounts.len();
@@ -320,7 +415,7 @@ impl Processor {
         let mut gases = vec![0; size];
 
         for i in 0..size {
-            let (rets, gas) = match Self::calculate_swap(i, amount, parts, accounts[i]) {
+            let (rets, gas) = match Self::calculate_swap(i, amount, parts, &(accounts[i])[..]) {
                 Ok((a, b)) => (a, b),
                 Err(_) => (vec![0], 0),
             };
@@ -421,6 +516,8 @@ impl PrintProgramError for OneSolError {
         match self {
             OneSolError::Unknown => msg!("Error: Unknown"),
             OneSolError::InvalidInstruction => msg!("Error: InvalidInstruction"),
+            OneSolError::InvalidInput => msg!("Error: InvalidInput"),
+            OneSolError::InvalidOwner => msg!("Error: InvalidOwner"),
             OneSolError::InvalidProgramAddress => msg!("Error: InvildProgramAddress"),
             OneSolError::ExpectedAccount => msg!("Error: ExpectedAccount"),
             OneSolError::IncorrectTokenProgramId => msg!("Error: IncorrectTokenProgramId"),
@@ -439,13 +536,13 @@ fn to_u64(val: u128) -> Result<u64, OneSolError> {
 }
 
 fn find_best_parts(amount: u64) -> u64 {
-    if amount > 100 {
-        return 100;
+    if amount > 50 {
+        50
+    } else if amount < 2 {
+        2
+    } else {
+        amount
     }
-    if amount < 2 {
-        return 2;
-    }
-    amount
 }
 
 #[cfg(test)]
