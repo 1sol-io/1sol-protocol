@@ -203,8 +203,12 @@ export class OneSolProtocol{
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
     nonce: number,
-    tokenSwapInfo: TokenSwapInfo,
+    tokenSwap0Info: TokenSwapInfo | null,
+    tokenSwap1Info: TokenSwapInfo | null,
   ): Promise<TransactionSignature> {
+    if (tokenSwap0Info === null && tokenSwap1Info === null) {
+      throw new Error('tokenSwapInfo and tokenSwap1Info all null');
+    }
     return await sendAndConfirmTransaction(
       'swap',
       this.connection,
@@ -217,20 +221,9 @@ export class OneSolProtocol{
           middleDestination,
           userDestination,
           this.tokenProgramId,
-          tokenSwapInfo,
-
-          // userTransferAuthority.publicKey,
-          // userSource,
-          // onesolSource,
-          // poolSource,
-          // poolDestination,
-          // onesolDestination,
-          // userDestination,
-          // this.poolToken,
-          // this.feeAccount,
-          // hostFeeAccount,
+          tokenSwap0Info,
+          tokenSwap1Info,
           this.protocolProgramId,
-          // this.tokenSwapProgramId,
           amountIn,
           minimumAmountOut,
           nonce,
@@ -250,7 +243,8 @@ export class OneSolProtocol{
     userDestination: PublicKey,
     tokenProgramId: PublicKey,
     // token-swap key begin
-    tokenSwapInfo: TokenSwapInfo | null,
+    tokenSwap0Info: TokenSwapInfo | null,
+    tokenSwap1Info: TokenSwapInfo | null,
     // tokenSwap: PublicKey,
     // tokenSwapAuthority: PublicKey,
     // poolSource: PublicKey,
@@ -266,25 +260,30 @@ export class OneSolProtocol{
     nonce: number,
   ): TransactionInstruction {
 
-    let supportTokenSwap = 1
-    if (tokenSwapInfo == null) {
-      supportTokenSwap = 0
-    }
     const dataLayout = BufferLayout.struct([
       BufferLayout.u8('instruction'),
       Layout.uint64('amountIn'),
       Layout.uint64('minimumAmountOut'),
       BufferLayout.u8('nonce'),
       BufferLayout.u8('dexesConfig'),
-      BufferLayout.u8('tokenSwapFlag'),
-      BufferLayout.u8('tokenSwapAccountsSize'),
+      BufferLayout.u8('tokenSwap0Flag'),
+      BufferLayout.u8('tokenSwap0AccountsSize'),
+      BufferLayout.u8('tokenSwap1Flag'),
+      BufferLayout.u8('tokenSwap1AccountsSize'),
     ]);
 
-    let tsKeys = Array<AccountMeta>();
-    let tsFlag = 0;
-    if (tokenSwapInfo !== null){
-      tsFlag = 1;
-      tsKeys = tokenSwapInfo.toKeys();
+    let ts0Keys = Array<AccountMeta>();
+    let ts0Flag = 0;
+    if (tokenSwap0Info !== null){
+      ts0Flag = 1;
+      ts0Keys = tokenSwap0Info.toKeys();
+    };
+
+    let ts1Keys = Array<AccountMeta>();
+    let ts1Flag = 0;
+    if (tokenSwap1Info !== null){
+      ts1Flag = 1;
+      ts1Keys = tokenSwap1Info.toKeys();
     };
 
     const data = Buffer.alloc(dataLayout.span);
@@ -294,9 +293,11 @@ export class OneSolProtocol{
         amountIn: new Numberu64(amountIn).toBuffer(),
         minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
         nonce: nonce,
-        dexesConfig: 1,
-        tokenSwapFlag: tsFlag,
-        tokenSwapAccountsSize: tsKeys.length,
+        dexesConfig: 2,
+        tokenSwap0Flag: ts0Flag,
+        tokenSwap0AccountsSize: ts0Keys.length,
+        tokenSwap1Flag: ts1Flag,
+        tokenSwap1AccountsSize: ts1Keys.length,
       },
       data,
     );
@@ -312,7 +313,12 @@ export class OneSolProtocol{
 
      
     ];
-    for (var k of tsKeys) {
+    for (var k of ts0Keys) {
+      keys.push(
+        k,
+      );
+    };
+    for (var k of ts1Keys) {
       keys.push(
         k,
       );

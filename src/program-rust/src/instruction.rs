@@ -17,8 +17,12 @@ pub struct Swap {
     pub minimum_amount_out: u64,
     /// nonce used to create validate program address
     pub nonce: u8,
-    /// supportTokenSwap
-    pub token_swap_config: (bool, usize),
+    /// dexes configs
+    pub dex_configs: [(bool, usize); 2],
+    // /// supportTokenSwap
+    // pub token_swap_config: (bool, usize),
+    // /// second token swap config
+    // pub token_swap_2_config: (bool, usize),
 }
 
 /// Instructions supported by the 1sol constracts program
@@ -55,17 +59,24 @@ impl OneSolInstruction {
                 let (amount_in, _rest) = Self::unpack_u64(rest)?;
                 let (minimum_amount_out, _rest) = Self::unpack_u64(_rest)?;
                 let (&nonce, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInput)?;
-                let (dexes_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
+                let (_dexes_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
 
-                let token_swap_config = dexes_configs[0];
+                if _dexes_configs.len() != 2 {
+                    return Err(OneSolError::InvalidInstruction.into());
+                }
+                // let token_swap_config = dexes_configs[0];
+                // let token_swap_2_config = dexes_configs[1];
                 // let token_swap_config = (true, true);
+                let dex_configs = [_dexes_configs[0], _dexes_configs[1]];
 
                 // let (&support_token_swap, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInput)?;
                 Self::Swap(Swap {
                     amount_in,
                     minimum_amount_out,
                     nonce,
-                    token_swap_config,
+                    dex_configs,
+                    // token_swap_config,
+                    // token_swap_2_config,
                 })
             }
             _ => return Err(OneSolError::InvalidInstruction.into()),
