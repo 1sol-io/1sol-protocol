@@ -6,7 +6,10 @@ use std::convert::TryInto;
 
 /// Initialize instruction data
 #[derive(Clone, Debug, PartialEq)]
-pub struct Initialize {}
+pub struct Initialize {
+    /// nonce used to create validate program address
+    pub nonce: u8,
+}
 
 /// Swap instruction data
 #[derive(Clone, Debug, PartialEq)]
@@ -15,8 +18,6 @@ pub struct Swap {
     pub amount_in: u64,
     /// Minimum amount of DESTINATION token to output, prevents excessive slippage
     pub minimum_amount_out: u64,
-    /// nonce used to create validate program address
-    pub nonce: u8,
     /// dexes configs
     pub dex_configs: [(bool, usize); 2],
     // /// supportTokenSwap
@@ -29,13 +30,20 @@ pub struct Swap {
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum OneSolInstruction {
+    /// Initializes a new 1solProtocol
+    /// 0. `[writable, signer]` New 1solProtocol to create.
+    /// 1. `[]` swap authority derived from `create_program_address(&[Token-swap account])`
+    /// 2. `[]` token Account. Must be non zero, owned by 1sol.
+    /// 3. '[]` Token program id
+    Initialize(Initialize),
+
     /// Swap the tokens in the pool.
     ///
-    ///   0. `[]` middle token account owner account
-    ///   1. `[]` user transfer authority
-    ///   2. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
-    ///   3. `[writable]` token_A SOURCE middle Account, amount is transferable by user transfer authority,
-    ///   4. `[writable]` token_B DESTINATION middle Account to swap FROM.  Must be the DESTINATION token.
+    ///   0. `[]` onesolProotcol account
+    ///   1. `[]` onesolProotcol authority
+    ///   2. `[]` user transfer authority
+    ///   3. `[writeable]` onesolProotcol token account
+    ///   4. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
     ///   5. `[writable]` token_B DESTINATION Account to swap FROM.  Must be the DESTINATION token.
     ///   6. '[]` Token program id
     ///
@@ -55,10 +63,13 @@ impl OneSolInstruction {
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
         let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
         Ok(match tag {
+            0 => {
+                let (&nonce, _rest) = rest.split_first().ok_or(OneSolError::InvalidInput)?;
+                Self::Initialize(Initialize { nonce })
+            }
             1 => {
                 let (amount_in, _rest) = Self::unpack_u64(rest)?;
                 let (minimum_amount_out, _rest) = Self::unpack_u64(_rest)?;
-                let (&nonce, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInput)?;
                 let (_dexes_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
 
                 if _dexes_configs.len() != 2 {
@@ -73,7 +84,6 @@ impl OneSolInstruction {
                 Self::Swap(Swap {
                     amount_in,
                     minimum_amount_out,
-                    nonce,
                     dex_configs,
                     // token_swap_config,
                     // token_swap_2_config,
