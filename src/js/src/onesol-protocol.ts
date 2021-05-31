@@ -2,24 +2,21 @@ import assert from 'assert';
 import BN from 'bn.js';
 import {Buffer} from 'buffer';
 import * as BufferLayout from 'buffer-layout';
-import type {Connection, TransactionSignature} from '@solana/web3.js';
-import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
+import type {Connection, Keypair, TransactionSignature} from '@solana/web3.js';
 import {
   Account,
+  Signer,
   AccountMeta,
   PublicKey,
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 
 import * as Layout from './layout';
-import {sendAndConfirmTransaction} from './util/send-and-confirm-transaction';
-import {loadAccount} from './util/account';
 
 export const ONESOL_PROTOCOL_PROGRAM_ID: PublicKey = new PublicKey(
-  // 'SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8',
-  // 'GSKD4BfZBFzCtGzZ7qEgPgr4UgkxiCK3bgTV9PQFRMab',
   '26XgL6X46AHxcMkfDNfnfQHrqZGzYEcTLj9SmAV5dLrV',
 );
 
@@ -57,6 +54,31 @@ export class Numberu64 extends BN {
     );
   }
 }
+
+export async function loadAccount(
+  connection: Connection,
+  address: PublicKey,
+  programId: PublicKey,
+): Promise<Buffer> {
+  const accountInfo = await connection.getAccountInfo(address);
+  if (accountInfo === null) {
+    throw new Error('Failed to find account');
+  }
+
+  if (!accountInfo.owner.equals(programId)) {
+    throw new Error(`Invalid owner: ${JSON.stringify(accountInfo.owner)}`);
+  }
+
+  return Buffer.from(accountInfo.data);
+}
+
+export const OneSolProtocolLayout = BufferLayout.struct([
+  BufferLayout.u8('version'),
+  BufferLayout.u8('nonce'),
+  Layout.publicKey('tokenProgramId'),
+  Layout.publicKey('tokenAccount'),
+  Layout.publicKey('mint'),
+]);
 
 export class TokenSwapInfo {
   constructor(
@@ -118,107 +140,202 @@ export class OneSolProtocol{
    */
   constructor(
     private connection: Connection,
+    public protocolInfo: PublicKey,
     public protocolProgramId: PublicKey,
-    public tokenSwapProgramId: PublicKey,
     public tokenProgramId: PublicKey,
+    public tokenAccountKey: PublicKey,
+    public authority: PublicKey,
+    public nonce: number,
+    public payer: Account,
   ) {
     this.connection = connection;
+    this.protocolInfo = protocolInfo;
     this.protocolProgramId = protocolProgramId;
-    this.tokenSwapProgramId = tokenSwapProgramId;
     this.tokenProgramId = tokenProgramId;
+    this.tokenAccountKey = tokenAccountKey;
+    this.nonce = nonce;
+    this.payer = payer;
+  }
+
+  static async loadOneSolProtocol(
+    connection: Connection,
+    address: PublicKey,
+    programId: PublicKey,
+    payer: Account,
+  ): Promise<OneSolProtocol> {
+    const data = await loadAccount(connection, address, programId);
+    const onesolProtocolData = OneSolProtocolLayout.decode(data);
+    if (onesolProtocolData.version != 1) {
+      throw new Error(`Invalid OneSolProtocol data`);
+    }
+    const [authority] = await PublicKey.findProgramAddress(
+      [address.toBuffer()],
+      programId,
+    )
+
+    return new OneSolProtocol(
+      connection,
+      address,
+      programId,
+      new PublicKey(onesolProtocolData.tokenProgramId),
+      new PublicKey(onesolProtocolData.tokenAccount),
+      authority,
+      onesolProtocolData.nonce,
+      payer,
+    )
+
   }
 
   /**
    * Create a new OneSol Swap
    *
    * @param connection The connection to use
-   * @param protocolProgramID The  program ID of the onesolProtocol program
+   * @param protocolAccountInfo The onesolProtocol account pubkey to use
+   * @param tokenAccountKey The onesolProtocol token account pubkey to use
    * @param tokenProgramId The program ID of the token program
-   * @param swapProgramId The program ID of the token-swap program
+   * @param authority the authority over the swap and accounts
+   * @param nonce The nonce used to generate the authority
+   * @param payer the payer
+   * @param protocolProgramID The  program ID of the onesolProtocol program
    * @return Token object for the newly minted token, Public key of the account holding the total supply of new tokens
    */
   static async createOneSolProtocol(
     connection: Connection,
-    protocolProgramId: PublicKey,
-    tokenSwapProgramId: PublicKey,
+    protocolAccountInfo: Account,
+    tokenAccountKey: PublicKey,
     tokenProgramId: PublicKey,
+    authority: PublicKey,
+    nonce: number, 
+    payer: Account,
+    protocolProgramId: PublicKey,
   ): Promise<OneSolProtocol> {
     // let transaction;
     const onesolSwap = new OneSolProtocol(
       connection,
+      protocolAccountInfo.publicKey,
       protocolProgramId,
-      tokenSwapProgramId,
       tokenProgramId,
+      tokenAccountKey,
+      authority,
+      nonce,
+      payer,
     );
 
-    // // Allocate memory for the account
-    // const balanceNeeded = await OneSolProtocol.getMinBalanceRentForExemptTokenSwap(
-    //   connection,
-    // );
+    // Allocate memory for the account
+    const balanceNeeded = await OneSolProtocol.getMinBalanceRentForExemptTokenSwap(
+      connection,
+    );
     // console.log("balanceNeeded: " + balanceNeeded);
     // console.log("create onesolProgram account.");
-    // transaction = new Transaction();
-    // transaction.add(
-    //   SystemProgram.createAccount({
-    //     fromPubkey: payer.publicKey,
-    //     newAccountPubkey: onesolProtocolAccount.publicKey,
-    //     lamports: balanceNeeded,
-    //     space: OneSolProtocolLayout.span,
-    //     programId: protocolProgramId,
-    //   }),
-    // );
+    let transaction = new Transaction();
+    transaction.add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: protocolAccountInfo.publicKey,
+        lamports: balanceNeeded,
+        space: OneSolProtocolLayout.span,
+        programId: protocolProgramId,
+      }),
+    );
+    const instruction = OneSolProtocol.createInitSwapInstruction(
+      protocolAccountInfo,
+      authority,
+      tokenAccountKey,
+      protocolProgramId,
+      tokenProgramId,
+      nonce,
+    );
 
-
-    // // transaction.add(instruction);
-    // await sendAndConfirmTransaction(
-    //   'createAccount and InitializeSwap',
-    //   connection,
-    //   transaction,
-    //   payer,
-    //   onesolProtocolAccount,
-    // );
+    transaction.add(instruction);
+    await realSendAndConfirmTransaction(
+      'createAccount and InitializeSwap',
+      connection,
+      transaction,
+      payer,
+      protocolAccountInfo,
+    );
     return onesolSwap;
+  }
+
+  /**
+   Get the minimum balance for the token swap account to be rent exempt
+  
+   @return Number of lamports required
+  **/
+  static async getMinBalanceRentForExemptTokenSwap(
+    connection: Connection,
+  ): Promise<number> {
+    return await connection.getMinimumBalanceForRentExemption(
+      OneSolProtocolLayout.span,
+    );
+  }
+
+  static createInitSwapInstruction(
+    onesolProtocolAccount: Account,
+    authority: PublicKey,
+    tokenAccount: PublicKey,
+    protocolProgramId: PublicKey,
+    tokenProgramId: PublicKey,
+    nonce: number,
+  ): TransactionInstruction {
+    const keys = [
+      {pubkey: onesolProtocolAccount.publicKey, isSigner: false, isWritable: true},
+      {pubkey: authority, isSigner: false, isWritable: false},
+      {pubkey: tokenAccount, isSigner: false, isWritable: false},
+      {pubkey: tokenProgramId, isSigner: false, isWritable: false},
+    ];
+    const commandDataLayout = BufferLayout.struct([
+      BufferLayout.u8('instruction'),
+      BufferLayout.u8('nonce'),
+    ]);
+    let data = Buffer.alloc(1024);
+    {
+      const encodeLength = commandDataLayout.encode({
+        instruction: 0,
+        nonce,
+      }, data);
+      data = data.slice(0, encodeLength);
+    }
+    return new TransactionInstruction({
+      keys,
+      programId: protocolProgramId,
+      data,
+    })
   }
 
   /**
    * Swap token A for token B
    *
-   * @param userSource User's source token account
-   * @param poolSource Pool's source token account
-   * @param poolDestination Pool's destination token account
-   * @param userDestination User's destination token account
-   * @param hostFeeAccount Host account to gather fees
    * @param userTransferAuthority Account delegated to transfer user's tokens
+   * @param userSource User's source token account
+   * @param userDestination User's destination token account
    * @param amountIn Amount to transfer from source account
    * @param minimumAmountOut Minimum amount of tokens the user will receive
+   * @param tokenSwap0Info 
+   * @param tokenSwap1Info 
    */
   async swap(
-    payer: Account,
-    middleOwner: PublicKey,
     userTransferAuthority: Account,
     userSource: PublicKey,
-    middleSource: PublicKey,
-    middleDestination: PublicKey,
     userDestination: PublicKey,
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
-    nonce: number,
     tokenSwap0Info: TokenSwapInfo | null,
     tokenSwap1Info: TokenSwapInfo | null,
   ): Promise<TransactionSignature> {
     if (tokenSwap0Info === null && tokenSwap1Info === null) {
       throw new Error('tokenSwapInfo and tokenSwap1Info all null');
     }
-    return await sendAndConfirmTransaction(
+    return await realSendAndConfirmTransaction(
       'swap',
       this.connection,
       new Transaction().add(
         OneSolProtocol.swapInstruction(
-          middleOwner,
+          this.protocolInfo,
+          this.authority,
           userTransferAuthority.publicKey,
+          this.tokenAccountKey,
           userSource,
-          middleSource,
-          middleDestination,
           userDestination,
           this.tokenProgramId,
           tokenSwap0Info,
@@ -226,45 +343,33 @@ export class OneSolProtocol{
           this.protocolProgramId,
           amountIn,
           minimumAmountOut,
-          nonce,
         ),
       ),
-      payer,
-      userTransferAuthority
+      this.payer,
+      userTransferAuthority,
     );
   }
 
   static swapInstruction(
-    middleOwnerInfo: PublicKey,
+    protocolAccount: PublicKey,
+    authority: PublicKey,
     userTransferAuthority: PublicKey,
+    protocolToken: PublicKey,
     userSource: PublicKey,
-    middleSource: PublicKey,
-    middleDestination: PublicKey,
     userDestination: PublicKey,
     tokenProgramId: PublicKey,
     // token-swap key begin
     tokenSwap0Info: TokenSwapInfo | null,
     tokenSwap1Info: TokenSwapInfo | null,
-    // tokenSwap: PublicKey,
-    // tokenSwapAuthority: PublicKey,
-    // poolSource: PublicKey,
-    // poolDestination: PublicKey,
-    // poolMint: PublicKey,
-    // feeAccount: PublicKey,
-    // tokenSwapProgramId: PublicKey,
-    // hostFeeAccount: PublicKey | null,
-    // token-swap key end
     protocolProgramId: PublicKey,
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
-    nonce: number,
   ): TransactionInstruction {
 
     const dataLayout = BufferLayout.struct([
       BufferLayout.u8('instruction'),
       Layout.uint64('amountIn'),
       Layout.uint64('minimumAmountOut'),
-      BufferLayout.u8('nonce'),
       BufferLayout.u8('dexesConfig'),
       BufferLayout.u8('tokenSwap0Flag'),
       BufferLayout.u8('tokenSwap0AccountsSize'),
@@ -292,7 +397,6 @@ export class OneSolProtocol{
         instruction: 1, // Swap instruction
         amountIn: new Numberu64(amountIn).toBuffer(),
         minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
-        nonce: nonce,
         dexesConfig: 2,
         tokenSwap0Flag: ts0Flag,
         tokenSwap0AccountsSize: ts0Keys.length,
@@ -303,15 +407,13 @@ export class OneSolProtocol{
     );
 
     const keys = [
-      {pubkey: middleOwnerInfo, isSigner: false, isWritable: false},
+      {pubkey: protocolAccount, isSigner: false, isWritable: false},
+      {pubkey: authority, isSigner: false, isWritable: false},
       {pubkey: userTransferAuthority, isSigner: true, isWritable: false},
+      {pubkey: protocolToken, isSigner: false, isWritable: true},
       {pubkey: userSource, isSigner: false, isWritable: true},
-      {pubkey: middleSource, isSigner: false, isWritable: true},
-      {pubkey: middleDestination, isSigner: false, isWritable: true},
       {pubkey: userDestination, isSigner: false, isWritable: true},
       {pubkey: tokenProgramId, isSigner: false, isWritable: false},
-
-     
     ];
     for (var k of ts0Keys) {
       keys.push(
@@ -330,4 +432,17 @@ export class OneSolProtocol{
       data,
     });
   }
+}
+
+export function realSendAndConfirmTransaction(
+  title: string,
+  connection: Connection,
+  transaction: Transaction,
+  ...signers: Array<Account>
+): Promise<TransactionSignature> {
+  return sendAndConfirmTransaction(connection, transaction, signers, {
+    skipPreflight: false,
+    commitment: 'recent',
+    preflightCommitment: 'recent',
+  });
 }

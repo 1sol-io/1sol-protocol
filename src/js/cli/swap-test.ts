@@ -9,29 +9,25 @@ import {
 import {AccountLayout, Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
 
-import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo} from '../src';
-import {sendAndConfirmTransaction} from '../src/util/send-and-confirm-transaction';
-import {newAccountWithLamports} from '../src/util/new-account-with-lamports';
-import {url} from '../src/util/url';
-import {sleep} from '../src/util/sleep';
-import {loadAccount} from '../src/util/account';
+import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo, loadAccount} from '../src/onesol-protocol';
+import {newAccountWithLamports} from './util/new-account-with-lamports';
+import {url} from './util/url';
+import {sleep} from './util/sleep';
 
 export const TOKEN_SWAP_PROGRAM_ID: PublicKey = new PublicKey(
   // 'SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8',
   'BgGyXsZxLbug3f4q7W5d4EtsqkQjH1M9pJxUSGQzVGyf',
 );
 
-// The following globals are created by `createTokenSwap` and used by subsequent tests
-// Token swap
-let tokenSwap: TokenSwap;
-let onesolProtocol: OneSolProtocol;
 
 let payer: Account;
 // owner of the user accounts
 let owner: Account;
 
+const onesolOwner = Keypair.generate();
 
 let tokenSwapAccount: Account;
+let onesolProtocolAccount: Account;
 
 // Tokens swapped
 let tokenPool: Token;
@@ -102,6 +98,7 @@ export async function prepareTokenSwap(): Promise<void> {
     payer = await newAccountWithLamports(connection, 1000000000);
     owner = await newAccountWithLamports(connection, 1000000000);
     tokenSwapAccount = new Account();
+
     // authority of the token and accounts
     let authority: PublicKey;
     // nonce used to generate the authority public key
@@ -160,7 +157,7 @@ export async function prepareTokenSwap(): Promise<void> {
   
     console.log('creating token swap');
     const swapPayer = await newAccountWithLamports(connection, 10000000000);
-    tokenSwap = await TokenSwap.createTokenSwap(
+    let tokenSwap = await TokenSwap.createTokenSwap(
       connection,
       swapPayer,
       tokenSwapAccount,
@@ -190,32 +187,70 @@ export async function prepareTokenSwap(): Promise<void> {
 
 }
 
+export async function createOneSolProtocol(): Promise<void> {
+  const connection = await getConnection();
+  console.log('creating onesolProtocol');
+
+  // await connection.requestAirdrop(onesolOwner.publicKey, 10000);
+  onesolProtocolAccount = new Account();
+
+  let [authority, nonce] = await PublicKey.findProgramAddress(
+    [onesolProtocolAccount.publicKey.toBuffer()],
+    ONESOL_PROTOCOL_PROGRAM_ID,
+  );
+  // let payer = Keypair.fromSecretKey
+
+  console.log('creating middle TokenB account');
+  let tokenBAccount = await mintB.createAccount(authority);
+  console.log('middle tokenB account address: ' + tokenBAccount.toString());
+  await mintB.mintTo(tokenAccountB, owner, [], 0);
+
+  console.log("create OneSolProtocol account");
+  let onesolProtocol = await OneSolProtocol.createOneSolProtocol(
+    connection,
+    onesolProtocolAccount,
+    tokenBAccount,
+    TOKEN_PROGRAM_ID,
+    authority,
+    nonce,
+    payer,
+    ONESOL_PROTOCOL_PROGRAM_ID, 
+  );
+  console.log("OneSolProtocol account created");
+  let fetchedAccount = await OneSolProtocol.loadOneSolProtocol(
+    connection,
+    onesolProtocolAccount.publicKey, 
+    ONESOL_PROTOCOL_PROGRAM_ID,
+    payer,
+  );
+  assert(fetchedAccount.tokenProgramId.equals(TOKEN_PROGRAM_ID));
+  assert(fetchedAccount.tokenAccountKey.equals(tokenBAccount));
+  assert(fetchedAccount.authority.equals(authority));
+  assert(fetchedAccount.nonce == nonce);
+  console.log("authority: " + fetchedAccount.authority.toString());
+  console.log("nonce: " + nonce);
+
+};
+
 export async function swap(): Promise<void> {
   const connection = await getConnection();
 
-  const alice = new Account();
+  const alice = await newAccountWithLamports(connection, 1000000000);
   // TokenSwap.loadTokenSwap(connection, tokenSwap.)
-  console.log('creating onesolprotocol');
-  onesolProtocol = await OneSolProtocol.createOneSolProtocol(
-    connection,
-    ONESOL_PROTOCOL_PROGRAM_ID,
-    TOKEN_SWAP_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
-  ) 
 
-  const onesolPro = new Account();
-  let onesolProtocolAuthority, nonce
-  [onesolProtocolAuthority, nonce] = await PublicKey.findProgramAddress(
-    [onesolPro.publicKey.toBuffer()],
-      ONESOL_PROTOCOL_PROGRAM_ID,
-  );
+  // const onesolPro = new Account();
+  // let onesolProtocolAuthority, nonce
+  // [onesolProtocolAuthority, nonce] = await PublicKey.findProgramAddress(
+  //   [onesolPro.publicKey.toBuffer()],
+  //     ONESOL_PROTOCOL_PROGRAM_ID,
+  // );
   // TODO create tokenAccount
 
   let poolAccount = SWAP_PROGRAM_OWNER_FEE_ADDRESS
   ? await tokenPool.createAccount(owner.publicKey)
   : null;
 
-
+  console.log("load TokenSwapInfo");
   const tokenSwapInfo = await loadTokenSwapInfo(
     connection,
     tokenSwapAccount.publicKey,
@@ -223,8 +258,14 @@ export async function swap(): Promise<void> {
     poolAccount,
   )
 
+  console.log("load OneSolProtocolInfo");
+  let onesolProtocol = await OneSolProtocol.loadOneSolProtocol(
+    connection,
+    onesolProtocolAccount.publicKey, 
+    ONESOL_PROTOCOL_PROGRAM_ID,
+    alice,
+  );
 
-  console.log("load TokenSwapInfo:");
 
   const userTransferAuthority = new Account();
 
@@ -245,56 +286,23 @@ export async function swap(): Promise<void> {
   let userAccountB = await mintB.createAccount(alice.publicKey);
   console.log('Alice TokenB Account: ' + userAccountB.toString())
 
-  // console.log('poolAccount: ' + poolAccount.toString())
-
-  console.log("Creating Middle TokenA account");
-  let onesolAccountA = await mintA.createAccount(onesolPro.publicKey);
-  console.log("Created Middle TokenA account: " + onesolAccountA);
-  console.log("Creating Middle TokenB account");
-  let onesolAccountB = await mintB.createAccount(onesolPro.publicKey);
-  console.log("Created Middle TokenB account: " + onesolAccountB);
-
-  await mintA.approve(
-    onesolAccountA,
-    userTransferAuthority.publicKey,
-    onesolPro,
-    [],
-    SWAP_AMOUNT_IN,
-  )
-  // TODO approve maybe not here
-  await mintB.approve(
-    onesolAccountB,
-    userTransferAuthority.publicKey,
-    onesolPro,
-    [],
-    // Mayby SWAP_AMOUNT_OUT ?
-    SWAP_AMOUNT_IN,
-  )
-
   let info;
   info = await mintA.getAccountInfo(userAccountA);
   console.log("userA:" + info.amount.toNumber());
   info = await mintB.getAccountInfo(userAccountB);
   console.log("userB:" + info.amount.toNumber());
-
-
-
+  console.log("authority: " + onesolProtocol.authority.toString());
   console.log('Swapping');
 
 // tokenAccountA,
 //     tokenAccountB,
 
   await onesolProtocol.swap(
-    payer,
-    onesolPro.publicKey,
     userTransferAuthority,
     userAccountA,
-    onesolAccountA,
-    onesolAccountB,
     userAccountB,
     SWAP_AMOUNT_IN,
     SWAP_AMOUNT_OUT,
-    nonce,
     tokenSwapInfo,
     null,
   );
@@ -304,19 +312,15 @@ export async function swap(): Promise<void> {
 
   // let info;
   info = await mintA.getAccountInfo(userAccountA);
-  console.log("user TokenA:" + info.amount.toNumber());
+  console.log("user TokenA amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == 0);
 
   info = await mintB.getAccountInfo(userAccountB);
-  console.log("user TokenB:" + info.amount.toNumber());
+  console.log("user TokenB amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == SWAP_AMOUNT_OUT);
 
-  info = await mintA.getAccountInfo(onesolAccountA);
-  console.log("onesol TokenA:" + info.amount.toNumber());
-  // assert(info.amount.toNumber() == 0);
-
-  info = await mintB.getAccountInfo(onesolAccountB);
-  console.log("onesol TokenB:" + info.amount.toNumber());
+  info = await mintB.getAccountInfo(onesolProtocol.tokenAccountKey);
+  console.log("protocol Token amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == SWAP_AMOUNT_OUT);
 
   info = await mintA.getAccountInfo(tokenAccountA);

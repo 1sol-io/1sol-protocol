@@ -1,7 +1,7 @@
 /node_modules
 *.sw[po]
 /.cargo
-/dist
+dist/
 .env
 test-ledger/
 .DS_Store
