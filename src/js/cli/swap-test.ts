@@ -9,11 +9,10 @@ import {
 import {AccountLayout, Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
 
-import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo} from '../src';
-import {newAccountWithLamports} from '../src/util/new-account-with-lamports';
-import {url} from '../src/util/url';
-import {sleep} from '../src/util/sleep';
-import {loadAccount} from '../src/util/account';
+import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo, loadAccount} from '../src/onesol-protocol';
+import {newAccountWithLamports} from './util/new-account-with-lamports';
+import {url} from './util/url';
+import {sleep} from './util/sleep';
 
 export const TOKEN_SWAP_PROGRAM_ID: PublicKey = new PublicKey(
   // 'SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8',
