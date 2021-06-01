@@ -85,15 +85,16 @@ impl Processor {
             return Err(OneSolError::InvalidProgramAddress.into());
         }
         let token = Self::unpack_token_account(token_info, &token_program_id)?;
-        if *authority_info.key != token.owner {
-            return Err(OneSolError::InvalidOwner.into());
-        }
         if token.delegate.is_some() {
-            return Err(OneSolError::InvalidDelegate.into());
+            if token.delegate.unwrap() != *authority_info.key {
+                return Err(OneSolError::InvalidDelegate.into());
+            }
+        } else if *authority_info.key != token.owner {
+                return Err(OneSolError::InvalidOwner.into());
         }
-        if token.close_authority.is_some() {
-            return Err(OneSolError::InvalidCloseAuthority.into());
-        }
+        // if token.close_authority.is_some() {
+        //     return Err(OneSolError::InvalidCloseAuthority.into());
+        // }
         let obj = OneSolState {
             version: 1,
             nonce,
