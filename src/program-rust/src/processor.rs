@@ -671,7 +671,12 @@ fn to_u64(val: u128) -> Result<u64, OneSolError> {
 }
 
 fn find_best_parts(_amount: u64, count: u64) -> u64 {
-    return 50 / count
+    let best = 30 / count;
+    if best < 2 {
+        2
+    } else {
+        best
+    }
 }
 
 // #[cfg(test)]
