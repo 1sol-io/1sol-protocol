@@ -212,7 +212,7 @@ impl Processor {
         let amount1 = dest_account1.amount;
 
         let (best, parts) = if calculate_swaps.len() > 1 {
-            let _parts = find_best_parts(amount_in);
+            let _parts = find_best_parts(amount_in, calculate_swaps.len() as u64);
             msg!("best parts: {}", _parts);
             sol_log_compute_units();
             let _best = Self::get_expected_return_with_gas(amount_in, _parts, &calculate_swaps[..]);
@@ -236,14 +236,17 @@ impl Processor {
                 "swap onesolA -> onesolB using token-swap, amount_in: {}",
                 token_swap_amount_in
             );
-            // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
-            let data = token_swap_0_data.unwrap();
-            Self::invoke_token_swap(
-                token_swap_amount_in,
-                token_swap_minimum_amount_out,
-                &data.0[..],
-                &data.1[..],
-            )?;
+            if token_swap_amount_in > 0 {
+               // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
+                let data = token_swap_0_data.unwrap();
+                Self::invoke_token_swap(
+                    token_swap_amount_in,
+                    token_swap_minimum_amount_out,
+                    &data.0[..],
+                    &data.1[..],
+                )?;  
+            }
+           
         }
 
         // token_swap_2
@@ -258,13 +261,15 @@ impl Processor {
                 "swap onesolA -> onesolB using token-swap-2, amount_in: {}",
                 token_swap_amount_in
             );
-            let data = token_swap_1_data.unwrap();
-            Self::invoke_token_swap(
-                token_swap_amount_in,
-                token_swap_minimum_amount_out,
-                &data.0[..],
-                &data.1[..],
-            )?;
+            if token_swap_amount_in > 0 {
+                let data = token_swap_1_data.unwrap();
+                Self::invoke_token_swap(
+                    token_swap_amount_in,
+                    token_swap_minimum_amount_out,
+                    &data.0[..],
+                    &data.1[..],
+                )?;
+            }
         }
 
         let dest_account =
@@ -665,14 +670,8 @@ fn to_u64(val: u128) -> Result<u64, OneSolError> {
     val.try_into().map_err(|_| OneSolError::ConversionFailure)
 }
 
-fn find_best_parts(amount: u64) -> u64 {
-    if amount > 50 {
-        50
-    } else if amount < 2 {
-        2
-    } else {
-        amount
-    }
+fn find_best_parts(_amount: u64, count: u64) -> u64 {
+    return 50 / count
 }
 
 // #[cfg(test)]
