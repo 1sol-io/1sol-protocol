@@ -85,15 +85,16 @@ impl Processor {
             return Err(OneSolError::InvalidProgramAddress.into());
         }
         let token = Self::unpack_token_account(token_info, &token_program_id)?;
-        if *authority_info.key != token.owner {
+        if token.delegate.is_some() {
+            if token.delegate.unwrap() != *authority_info.key {
+                return Err(OneSolError::InvalidDelegate.into());
+            }
+        } else if *authority_info.key != token.owner {
             return Err(OneSolError::InvalidOwner.into());
         }
-        if token.delegate.is_some() {
-            return Err(OneSolError::InvalidDelegate.into());
-        }
-        if token.close_authority.is_some() {
-            return Err(OneSolError::InvalidCloseAuthority.into());
-        }
+        // if token.close_authority.is_some() {
+        //     return Err(OneSolError::InvalidCloseAuthority.into());
+        // }
         let obj = OneSolState {
             version: 1,
             nonce,
@@ -114,6 +115,12 @@ impl Processor {
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         msg!("start process swap");
+        if amount_in < 1 {
+            return Err(OneSolError::InvalidInput.into());
+        }
+        if minimum_amount_out > amount_in {
+            return Err(OneSolError::InvalidInput.into());
+        }
 
         let (account_infos, rest) = accounts.split_at(7);
         let account_info_iter = &mut account_infos.iter();
@@ -211,7 +218,7 @@ impl Processor {
         let amount1 = dest_account1.amount;
 
         let (best, parts) = if calculate_swaps.len() > 1 {
-            let _parts = find_best_parts(amount_in);
+            let _parts = find_best_parts(amount_in, calculate_swaps.len() as u64);
             msg!("best parts: {}", _parts);
             sol_log_compute_units();
             let _best = Self::get_expected_return_with_gas(amount_in, _parts, &calculate_swaps[..]);
@@ -235,14 +242,16 @@ impl Processor {
                 "swap onesolA -> onesolB using token-swap, amount_in: {}",
                 token_swap_amount_in
             );
-            // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
-            let data = token_swap_0_data.unwrap();
-            Self::invoke_token_swap(
-                token_swap_amount_in,
-                token_swap_minimum_amount_out,
-                &data.0[..],
-                &data.1[..],
-            )?;
+            if token_swap_amount_in > 0 {
+                // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
+                let data = token_swap_0_data.unwrap();
+                Self::invoke_token_swap(
+                    token_swap_amount_in,
+                    token_swap_minimum_amount_out,
+                    &data.0[..],
+                    &data.1[..],
+                )?;
+            }
         }
 
         // token_swap_2
@@ -257,13 +266,15 @@ impl Processor {
                 "swap onesolA -> onesolB using token-swap-2, amount_in: {}",
                 token_swap_amount_in
             );
-            let data = token_swap_1_data.unwrap();
-            Self::invoke_token_swap(
-                token_swap_amount_in,
-                token_swap_minimum_amount_out,
-                &data.0[..],
-                &data.1[..],
-            )?;
+            if token_swap_amount_in > 0 {
+                let data = token_swap_1_data.unwrap();
+                Self::invoke_token_swap(
+                    token_swap_amount_in,
+                    token_swap_minimum_amount_out,
+                    &data.0[..],
+                    &data.1[..],
+                )?;
+            }
         }
 
         let dest_account =
@@ -664,13 +675,12 @@ fn to_u64(val: u128) -> Result<u64, OneSolError> {
     val.try_into().map_err(|_| OneSolError::ConversionFailure)
 }
 
-fn find_best_parts(amount: u64) -> u64 {
-    if amount > 50 {
-        50
-    } else if amount < 2 {
+fn find_best_parts(_amount: u64, count: u64) -> u64 {
+    let best = 30 / count;
+    if best < 2 {
         2
     } else {
-        amount
+        best
     }
 }
 
