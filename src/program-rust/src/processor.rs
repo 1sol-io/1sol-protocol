@@ -90,7 +90,7 @@ impl Processor {
                 return Err(OneSolError::InvalidDelegate.into());
             }
         } else if *authority_info.key != token.owner {
-                return Err(OneSolError::InvalidOwner.into());
+            return Err(OneSolError::InvalidOwner.into());
         }
         // if token.close_authority.is_some() {
         //     return Err(OneSolError::InvalidCloseAuthority.into());
@@ -115,6 +115,12 @@ impl Processor {
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         msg!("start process swap");
+        if amount_in < 1 {
+            return Err(OneSolError::InvalidInput.into());
+        }
+        if minimum_amount_out > amount_in {
+            return Err(OneSolError::InvalidInput.into());
+        }
 
         let (account_infos, rest) = accounts.split_at(7);
         let account_info_iter = &mut account_infos.iter();
@@ -237,16 +243,15 @@ impl Processor {
                 token_swap_amount_in
             );
             if token_swap_amount_in > 0 {
-               // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
+                // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
                 let data = token_swap_0_data.unwrap();
                 Self::invoke_token_swap(
                     token_swap_amount_in,
                     token_swap_minimum_amount_out,
                     &data.0[..],
                     &data.1[..],
-                )?;  
+                )?;
             }
-           
         }
 
         // token_swap_2
