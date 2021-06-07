@@ -118,9 +118,6 @@ impl Processor {
         if amount_in < 1 {
             return Err(OneSolError::InvalidInput.into());
         }
-        if minimum_amount_out > amount_in {
-            return Err(OneSolError::InvalidInput.into());
-        }
 
         let (account_infos, rest) = accounts.split_at(7);
         let account_info_iter = &mut account_infos.iter();
@@ -290,6 +287,7 @@ impl Processor {
         // Transfer OnesolB -> AliceB
         // TODO 这里应该确定一下 amout_out
         msg!("transfer OneSolB -> AliceB");
+        sol_log_compute_units();
         Self::token_transfer(
             protocol_account.key,
             token_program_info.clone(),
@@ -676,7 +674,7 @@ fn to_u64(val: u128) -> Result<u64, OneSolError> {
 }
 
 fn find_best_parts(_amount: u64, count: u64) -> u64 {
-    let best = 30 / count;
+    let best = 16 / count;
     if best < 2 {
         2
     } else {
