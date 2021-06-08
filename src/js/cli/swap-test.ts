@@ -11,14 +11,12 @@ import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
 
 import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo, loadAccount} from '../src/onesol-protocol';
 import {newAccountWithLamports} from './util/new-account-with-lamports';
-import {url} from './util/url';
+import {tokenSwapProgramId, url} from './util/url';
 import {sleep} from './util/sleep';
 
-export const TOKEN_SWAP_PROGRAM_ID: PublicKey = new PublicKey(
-  // 'SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8',
-  'BgGyXsZxLbug3f4q7W5d4EtsqkQjH1M9pJxUSGQzVGyf',
+let tokenSwapProgramPubKey: PublicKey = new PublicKey(
+  tokenSwapProgramId
 );
-
 
 let payer: Account;
 // owner of the user accounts
@@ -105,7 +103,7 @@ export async function prepareTokenSwap(): Promise<void> {
     let nonce: number; 
     [authority, nonce] = await PublicKey.findProgramAddress(
       [tokenSwapAccount.publicKey.toBuffer()],
-      TOKEN_SWAP_PROGRAM_ID,
+      tokenSwapProgramPubKey,
     );
 
     console.log('creating pool mint');
@@ -169,7 +167,7 @@ export async function prepareTokenSwap(): Promise<void> {
       mintB.publicKey,
       feeAccount,
       tokenAccountPool,
-      TOKEN_SWAP_PROGRAM_ID,
+      tokenSwapProgramPubKey,
       TOKEN_PROGRAM_ID,
       nonce,
       TRADING_FEE_NUMERATOR,
@@ -236,16 +234,6 @@ export async function swap(): Promise<void> {
   const connection = await getConnection();
 
   const alice = await newAccountWithLamports(connection, 1000000000);
-  // TokenSwap.loadTokenSwap(connection, tokenSwap.)
-
-  // const onesolPro = new Account();
-  // let onesolProtocolAuthority, nonce
-  // [onesolProtocolAuthority, nonce] = await PublicKey.findProgramAddress(
-  //   [onesolPro.publicKey.toBuffer()],
-  //     ONESOL_PROTOCOL_PROGRAM_ID,
-  // );
-  // TODO create tokenAccount
-
   let poolAccount = SWAP_PROGRAM_OWNER_FEE_ADDRESS
   ? await tokenPool.createAccount(owner.publicKey)
   : null;
@@ -254,7 +242,7 @@ export async function swap(): Promise<void> {
   const tokenSwapInfo = await loadTokenSwapInfo(
     connection,
     tokenSwapAccount.publicKey,
-    TOKEN_SWAP_PROGRAM_ID,
+    tokenSwapProgramPubKey,
     poolAccount,
   )
 
