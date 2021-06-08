@@ -585,6 +585,9 @@ impl Processor {
         if index == 0 {
             return Self::calculate_token_swap(amount, parts, accounts);
         }
+        if index == 1 {
+            return Self::calculate_token_swap(amount, parts, accounts);
+        }
         // if not support swap return 0
         return Ok((vec![0], 0));
     }
