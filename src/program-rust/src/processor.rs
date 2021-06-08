@@ -279,13 +279,15 @@ impl Processor {
         let result_amount = dest_account.amount - amount1;
 
         // TODO 计算手续费
-        msg!(
-            "onesol_destination amount: {}, should tranfer: {}",
-            dest_account.amount,
-            result_amount,
-        );
+        // msg!(
+        //     "onesol_destination amount: {}, should tranfer: {}",
+        //     dest_account.amount,
+        //     result_amount,
+        // );
+        if result_amount < minimum_amount_out {
+            return Err(OneSolError::ExceededSlippage.into());
+        }
         // Transfer OnesolB -> AliceB
-        // TODO 这里应该确定一下 amout_out
         msg!("transfer OneSolB -> AliceB");
         sol_log_compute_units();
         Self::token_transfer(
@@ -653,6 +655,7 @@ impl PrintProgramError for OneSolError {
     {
         match self {
             OneSolError::Unknown => msg!("Error: Unknown"),
+            OneSolError::ExceededSlippage => msg!("Error: ExceededSlippage"),
             OneSolError::IncorrectSwapAccount => msg!("Error: IncorrectSwapAccount"),
             OneSolError::InvalidDelegate => msg!("Error: InvalidDelegate"),
             OneSolError::InvalidCloseAuthority => msg!("Error: InvalidCloseAuthority"),
