@@ -10,7 +10,9 @@ pub enum OneSolError {
     /// Unknown error.
     #[error("Unknown error")]
     Unknown,
-
+    /// Swap instruction exceeds desired slippage limit
+    #[error("Swap instruction exceeds desired slippage limit")]
+    ExceededSlippage,
     /// Address of the provided swap token account is incorrect.
     #[error("Address of the provided swap token account is incorrect")]
     IncorrectSwapAccount,
