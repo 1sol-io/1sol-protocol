@@ -55,6 +55,9 @@ pub enum OneSolError {
     /// Given pool token amount results in zero trading tokens
     #[error("Given pool token amount results in zero trading tokens")]
     ZeroTradingTokens,
+    /// Internal error
+    #[error("internal error")]
+    InternalError,
 }
 impl From<OneSolError> for ProgramError {
     fn from(e: OneSolError) -> Self {
