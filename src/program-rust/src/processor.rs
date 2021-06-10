@@ -3,8 +3,9 @@
 use crate::{
     error::OneSolError,
     instruction::{Initialize, OneSolInstruction, Swap},
-    instructions::token_swap,
     state::OneSolState,
+    swappers::{token_swap::TokenSwap, Swapper},
+    util::unpack_token_account,
 };
 
 use core::i64::MIN;
@@ -15,33 +16,16 @@ use solana_program::{
     entrypoint::ProgramResult,
     log::sol_log_compute_units,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke_signed,
     program_error::{PrintProgramError, ProgramError},
     program_pack::Pack,
     pubkey::Pubkey,
-    rent::Rent,
-    system_instruction::create_account,
-    sysvar::Sysvar,
 };
-use std::convert::TryInto;
 
 /// Program state handler.
 pub struct Processor {}
 
 impl Processor {
-    /// Unpacks a spl_token `Account`.
-    pub fn unpack_token_account(
-        account_info: &AccountInfo,
-        token_program_id: &Pubkey,
-    ) -> Result<spl_token::state::Account, OneSolError> {
-        if account_info.owner != token_program_id {
-            Err(OneSolError::IncorrectTokenProgramId)
-        } else {
-            spl_token::state::Account::unpack(&account_info.data.borrow())
-                .map_err(|_| OneSolError::ExpectedAccount)
-        }
-    }
-
     /// Processes an [Instruction](enum.Instruction.html).
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
         let instruction = OneSolInstruction::unpack(input)?;
@@ -84,7 +68,7 @@ impl Processor {
         if *authority_info.key != Self::authority_id(program_id, onesol_info.key, nonce)? {
             return Err(OneSolError::InvalidProgramAddress.into());
         }
-        let token = Self::unpack_token_account(token_info, &token_program_id)?;
+        let token = unpack_token_account(token_info, &token_program_id)?;
         if token.delegate.is_some() {
             if token.delegate.unwrap() != *authority_info.key {
                 return Err(OneSolError::InvalidDelegate.into());
@@ -150,8 +134,8 @@ impl Processor {
 
         let token_program_id = *token_program_info.key;
 
-        let protocol_token = Self::unpack_token_account(protocol_token_account, &token_program_id)?;
-        let destination_token = Self::unpack_token_account(destination_info, &token_program_id)?;
+        let protocol_token = unpack_token_account(protocol_token_account, &token_program_id)?;
+        let destination_token = unpack_token_account(destination_info, &token_program_id)?;
         if protocol_token.mint != destination_token.mint {
             return Err(OneSolError::InvalidInput.into());
         }
@@ -160,7 +144,7 @@ impl Processor {
         //     return Err(OneSolError::InvalidOwner.into());
         // }
 
-        let mut calculate_swaps = vec![];
+        let mut swappers: Vec<TokenSwap> = vec![];
 
         // load token-swap data
         let ts0_accounts_count = if dex_configs[0].0 {
@@ -172,53 +156,44 @@ impl Processor {
             return Err(OneSolError::InvalidInstruction.into());
         }
         let (ts0_accounts, rest) = rest.split_at(ts0_accounts_count);
-        let token_swap_0_data = if dex_configs[0].0 {
-            let d = Self::init_token_swap_data(
+        if dex_configs[0].0 {
+            swappers.push(TokenSwap::new_spl_token_swap(
                 token_program_info.clone(),
                 user_transfer_authority_info.clone(),
                 source_info.clone(),
                 protocol_token_account.clone(),
                 ts0_accounts,
-            )?;
-            calculate_swaps.push(d.1);
-            Some((d.0, d.2))
-        } else {
-            None
-        };
+            )?);
+        }
         // load token-swap-2 data
-        let ts1_count = if dex_configs[1].0 {
+        let ts1_accounts_count = if dex_configs[1].0 {
             dex_configs[1].1
         } else {
             0
         };
-        if rest.len() < ts1_count {
+        if rest.len() < ts1_accounts_count {
             return Err(OneSolError::InvalidInstruction.into());
         }
-        let (ts1_accounts, _rest) = rest.split_at(ts1_count);
-        let token_swap_1_data = if dex_configs[1].0 {
-            let d = Self::init_token_swap_data(
+        let (ts1_accounts, _rest) = rest.split_at(ts1_accounts_count);
+        if dex_configs[1].0 {
+            swappers.push(TokenSwap::new_spl_token_swap(
                 token_program_info.clone(),
                 user_transfer_authority_info.clone(),
                 source_info.clone(),
                 protocol_token_account.clone(),
                 ts1_accounts,
-            )?;
-            calculate_swaps.push(d.1);
-            Some((d.0, d.2))
-        } else {
-            None
-        };
-
+            )?);
+        }
         let dest_account1 =
             spl_token::state::Account::unpack(&protocol_token_account.data.borrow())?;
 
         let amount1 = dest_account1.amount;
 
-        let (best, parts) = if calculate_swaps.len() > 1 {
-            let _parts = find_best_parts(amount_in, calculate_swaps.len() as u64);
+        let (best, parts) = if swappers.len() > 1 {
+            let _parts = find_best_parts(amount_in, swappers.len() as u64);
             msg!("best parts: {}", _parts);
             sol_log_compute_units();
-            let _best = Self::get_expected_return_with_gas(amount_in, _parts, &calculate_swaps[..]);
+            let _best = Self::get_expected_return_with_gas(amount_in, _parts, &swappers[..]);
             sol_log_compute_units();
             msg!("Best split is {:?}", _best);
             (_best, _parts)
@@ -227,51 +202,20 @@ impl Processor {
         };
 
         let mut best_index: usize = 0;
-
-        if dex_configs[0].0 {
-            // run Token Swap swap
+        for i in 0..swappers.len() {
             let token_swap_amount_in = best[best_index] * amount_in / parts;
             let token_swap_minimum_amount_out = best[best_index] * minimum_amount_out / parts;
-
             best_index += 1;
-            // Swap OnesolA -> OnesolB
-            msg!(
-                "swap onesolA -> onesolB using token-swap, amount_in: {}",
-                token_swap_amount_in
-            );
-            if token_swap_amount_in > 0 {
-                // let token_swap_program_id = Pubkey::from_str(TOKEN_SWAP_PROGRAM_ADDRESS).unwrap();
-                let data = token_swap_0_data.unwrap();
-                Self::invoke_token_swap(
-                    token_swap_amount_in,
-                    token_swap_minimum_amount_out,
-                    &data.0[..],
-                    &data.1[..],
-                )?;
+            if token_swap_amount_in <= 0 {
+                continue;
             }
-        }
-
-        // token_swap_2
-        if dex_configs[1].0 {
-            // run Token Swap swap
-            let token_swap_amount_in = best[best_index] * amount_in / parts;
-            let token_swap_minimum_amount_out = best[best_index] * minimum_amount_out / parts;
-            // if have new dex shoud run best_index += 1
-            // best_index += 1;
-            // Swap OnesolA -> OnesolB
             msg!(
-                "swap onesolA -> onesolB using token-swap-2, amount_in: {}",
-                token_swap_amount_in
+                "swap onesolA -> onesolB using token-swap[{}], amount_in: {}, minimum_amount_out: {}",
+                i,
+                token_swap_amount_in,
+                token_swap_minimum_amount_out,
             );
-            if token_swap_amount_in > 0 {
-                let data = token_swap_1_data.unwrap();
-                Self::invoke_token_swap(
-                    token_swap_amount_in,
-                    token_swap_minimum_amount_out,
-                    &data.0[..],
-                    &data.1[..],
-                )?;
-            }
+            swappers[i].invoke_swap(token_swap_amount_in, token_swap_minimum_amount_out)?;
         }
 
         let dest_account =
@@ -302,109 +246,6 @@ impl Processor {
         .unwrap();
 
         Ok(())
-    }
-
-    /// init token swap data
-    pub fn init_token_swap_data<'a>(
-        token_program_info: AccountInfo<'a>,
-        user_transfer_authority_info: AccountInfo<'a>,
-        middle_source_info: AccountInfo<'a>,
-        middle_destination_info: AccountInfo<'a>,
-        accounts: &[AccountInfo<'a>],
-    ) -> Result<
-        (
-            Vec<AccountInfo<'a>>,
-            Vec<AccountInfo<'a>>,
-            Vec<Option<&'a Pubkey>>,
-        ),
-        ProgramError,
-    > {
-        let account_info_iter = &mut accounts.iter();
-        let swap_info = next_account_info(account_info_iter)?;
-        let swap_authority_info = next_account_info(account_info_iter)?;
-        let swap_source_info = next_account_info(account_info_iter)?;
-        let swap_destination_info = next_account_info(account_info_iter)?;
-        let pool_mint_info = next_account_info(account_info_iter)?;
-        let pool_fee_account_info = next_account_info(account_info_iter)?;
-        let token_swap_program_info = next_account_info(account_info_iter)?;
-        let host_fee_account_info = next_account_info(account_info_iter);
-
-        let host_fee_pubkey = if let Ok(_host_fee_account_info) = host_fee_account_info {
-            Some(_host_fee_account_info.key)
-        } else {
-            None
-        };
-
-        let keys = vec![
-            Some(token_swap_program_info.key),
-            Some(token_program_info.key),
-            Some(swap_info.key),
-            Some(swap_authority_info.key),
-            Some(user_transfer_authority_info.key),
-            Some(middle_source_info.key),
-            Some(swap_source_info.key),
-            Some(swap_destination_info.key),
-            Some(middle_destination_info.key),
-            Some(pool_mint_info.key),
-            Some(pool_fee_account_info.key),
-            host_fee_pubkey,
-        ];
-        let mut swap_accounts = vec![
-            swap_info.clone(),
-            swap_authority_info.clone(),
-            user_transfer_authority_info.clone(),
-            middle_source_info.clone(),
-            swap_source_info.clone(),
-            swap_destination_info.clone(),
-            middle_destination_info.clone(),
-            pool_mint_info.clone(),
-            pool_fee_account_info.clone(),
-            token_program_info.clone(),
-        ];
-        if let Ok(_host_fee_account_info) = host_fee_account_info {
-            swap_accounts.push(_host_fee_account_info.clone());
-        };
-        Ok((
-            swap_accounts,
-            vec![
-                swap_info.clone(),
-                swap_source_info.clone(),
-                swap_destination_info.clone(),
-            ],
-            keys,
-        ))
-    }
-
-    /// invoke
-    pub fn invoke_token_swap<'a>(
-        amount_in: u64,
-        minimum_amount_out: u64,
-        account_infos: &[AccountInfo],
-        keys: &[Option<&Pubkey>],
-    ) -> Result<(), ProgramError> {
-        let instruction = token_swap::Swap {
-            // amount_in: token_swap_amount_in,
-            amount_in: amount_in,
-            minimum_amount_out: minimum_amount_out,
-        };
-
-        let swap = token_swap::swap(
-            keys[0].unwrap(),
-            keys[1].unwrap(),
-            keys[2].unwrap(),
-            keys[3].unwrap(),
-            keys[4].unwrap(),
-            keys[5].unwrap(),
-            keys[6].unwrap(),
-            keys[7].unwrap(),
-            keys[8].unwrap(),
-            keys[9].unwrap(),
-            keys[10].unwrap(),
-            keys[11],
-            instruction,
-        )?;
-        // invoke token-swap
-        invoke(&swap, account_infos)
     }
 
     /// Calculates the authority id by generating a program address.
@@ -444,40 +285,6 @@ impl Processor {
             &[source, destination, authority, token_program],
             signers,
         )
-    }
-
-    /// create token account
-    pub fn token_create_account<'a>(
-        token_program: AccountInfo<'a>,
-        payer_info: AccountInfo<'a>,
-        token_info: AccountInfo<'a>,
-        onesol_account_info: AccountInfo<'a>,
-        token_account_info: AccountInfo<'a>,
-    ) -> Result<(), ProgramError> {
-        let rent = &Rent::from_account_info(&token_program)?;
-        let l = 1.max(rent.minimum_balance(spl_token::state::Account::get_packed_len()));
-
-        let create_account_instruction = create_account(
-            payer_info.key,
-            token_account_info.key,
-            l,
-            spl_token::state::Account::get_packed_len() as u64,
-            token_program.key,
-        );
-
-        invoke(
-            &create_account_instruction,
-            &[payer_info.clone(), token_account_info.clone()],
-        )?;
-
-        let token_create_init_instruction = spl_token::instruction::initialize_account(
-            token_program.key,
-            token_account_info.key,
-            token_info.key,
-            onesol_account_info.key,
-        )?;
-
-        invoke(&token_create_init_instruction, &[])
     }
 
     /// https://github.com/1inch/1inchProtocol/blob/master/contracts/OneSplitBase.sol\#L139
@@ -544,15 +351,15 @@ impl Processor {
     fn get_expected_return_with_gas(
         amount: u64,
         parts: u64, // Number of pieces source volume could be splitted
-        accounts: &[Vec<AccountInfo>],
+        swapper: &[TokenSwap],
     ) -> Vec<u64> {
         let mut at_least_one_positive = false;
-        let size = accounts.len();
+        let size = swapper.len();
         let mut matrix: Vec<Vec<i64>> = vec![vec![0; (parts + 1) as usize]; size];
         let mut gases = vec![0; size];
 
         for i in 0..size {
-            let (rets, gas) = match Self::calculate_swap(i, amount, parts, &(accounts[i])[..]) {
+            let (rets, gas) = match swapper[i].calculate_swap(amount, parts) {
                 Ok((a, b)) => (a, b),
                 Err(_) => (vec![0], 0),
             };
@@ -577,75 +384,6 @@ impl Processor {
 
         return distribution;
     }
-
-    fn calculate_swap(
-        index: usize,
-        amount: u64,
-        parts: u64,
-        accounts: &[AccountInfo],
-    ) -> Result<(Vec<u64>, u64), ProgramError> {
-        if index == 0 {
-            return Self::calculate_token_swap(amount, parts, accounts);
-        }
-        if index == 1 {
-            return Self::calculate_token_swap(amount, parts, accounts);
-        }
-        // if not support swap return 0
-        return Ok((vec![0], 0));
-    }
-
-    fn _linear_interpolation(value: u64, parts: u64) -> Vec<u64> {
-        let mut rets = vec![0; parts as usize];
-        for i in 0..parts {
-            rets[i as usize] = value * (i + 1) / parts;
-        }
-        rets
-    }
-
-    fn calculate_token_swap(
-        amount: u64,
-        parts: u64,
-        accounts: &[AccountInfo],
-    ) -> Result<(Vec<u64>, u64), ProgramError> {
-        let amounts = Self::_linear_interpolation(amount, parts);
-        let mut rets = vec![0; amounts.len()];
-        let account_iters = &mut accounts.iter();
-        let token_swap_program_account = next_account_info(account_iters)?;
-        let source_info = next_account_info(account_iters)?;
-        let destination_info = next_account_info(account_iters)?;
-        let _token_swap =
-            spl_token_swap::state::SwapVersion::unpack(&token_swap_program_account.data.borrow())?;
-        let source_account =
-            Self::unpack_token_account(source_info, &_token_swap.token_program_id())?;
-        let dest_account =
-            Self::unpack_token_account(destination_info, &_token_swap.token_program_id())?;
-
-        let trade_direction = if *source_info.key == *_token_swap.token_a_account() {
-            spl_token_swap::curve::calculator::TradeDirection::AtoB
-        } else {
-            spl_token_swap::curve::calculator::TradeDirection::BtoA
-        };
-
-        let mut source_amount = source_account.amount;
-        let mut destination_amount = dest_account.amount;
-
-        for i in 0..amounts.len() {
-            let result = _token_swap
-                .swap_curve()
-                .swap(
-                    to_u128(amounts[i])?,
-                    to_u128(source_amount)?,
-                    to_u128(destination_amount)?,
-                    trade_direction,
-                    _token_swap.fees(),
-                )
-                .ok_or(OneSolError::ZeroTradingTokens)?;
-            rets[i] = to_u64(result.destination_amount_swapped)?;
-            source_amount = to_u64(result.new_swap_source_amount)?;
-            destination_amount = to_u64(result.new_swap_destination_amount)?;
-        }
-        Ok((rets, 0))
-    }
 }
 
 impl PrintProgramError for OneSolError {
@@ -667,16 +405,9 @@ impl PrintProgramError for OneSolError {
             OneSolError::IncorrectTokenProgramId => msg!("Error: IncorrectTokenProgramId"),
             OneSolError::ConversionFailure => msg!("Error: ConversionFailure"),
             OneSolError::ZeroTradingTokens => msg!("Error: ZeroTradingTokens"),
+            OneSolError::InternalError => msg!("Error: InternalError"),
         }
     }
-}
-
-fn to_u128(val: u64) -> Result<u128, OneSolError> {
-    val.try_into().map_err(|_| OneSolError::ConversionFailure)
-}
-
-fn to_u64(val: u128) -> Result<u64, OneSolError> {
-    val.try_into().map_err(|_| OneSolError::ConversionFailure)
 }
 
 fn find_best_parts(_amount: u64, count: u64) -> u64 {
@@ -688,14 +419,35 @@ fn find_best_parts(_amount: u64, count: u64) -> u64 {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     #[test]
-//     fn test_distribution() {
-//         assert_eq!(1, 1);
-//         // let result = Processor::get_expected_return_with_gas(10, 100, vec![token_swap_curve_1, token_swap_curve_2]);
-//         // println!("getExpectedReturnWithGas: {:?}", result);
-//         // assert_eq!(result, vec![90, 10]);
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_expected_return_with_gas() {
+        let swappers: Vec<TokenSwap> = vec![
+            TokenSwap::new_test_swap().unwrap(),
+            TokenSwap::new_test_swap().unwrap(),
+        ];
+        let result = Processor::get_expected_return_with_gas(10, 10, &swappers[..]);
+        println!("getExpectedReturnWithGas: {:?}", result);
+        assert_eq!(result, vec![9, 1]);
+
+        let result = Processor::get_expected_return_with_gas(10, 8, &swappers[..]);
+        println!("getExpectedReturnWithGas: {:?}", result);
+        assert_eq!(result, vec![7, 1])
+        // assert_eq!(result, vec![90, 10]);
+    }
+
+    #[test]
+    fn test_find_best_parts() {
+        let r = find_best_parts(10, 2);
+        assert_eq!(r, 8);
+        let r = find_best_parts(10, 8);
+        assert_eq!(r, 2);
+        let r = find_best_parts(10, 9);
+        assert_eq!(r, 2);
+        let r = find_best_parts(10, 1);
+        assert_eq!(r, 16);
+    }
+}

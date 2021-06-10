@@ -5,9 +5,10 @@
 
 pub mod error;
 pub mod instruction;
-pub mod instructions;
 pub mod processor;
 pub mod state;
+mod swappers;
+mod util;
 
 #[cfg(not(feature = "no-entrypoint"))]
 mod entrypoint;
