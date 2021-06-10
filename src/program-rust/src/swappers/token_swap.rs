@@ -1,6 +1,10 @@
 //! TokenSwap
-use crate::swappers;
+use crate::{
+    swappers,
+    util::{to_u128, to_u64},
+};
 use solana_program::{account_info::AccountInfo, program_error::ProgramError};
+// use spl_token_swap::curve::base::SwapCurve;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -67,12 +71,7 @@ impl<'a> Swapper for TokenSwap<'a> {
                 );
             }
             SwapperType::Test => {
-                let amounts = swappers::linear_interpolation(amount, parts);
-                // let mut rets = vec![0; amounts.len()];
-                let rets = (0..amounts.len())
-                    .map(|_| amount / amounts.len() as u64)
-                    .collect::<Vec<u64>>();
-                return Ok((rets, 0));
+                return process_test_calculate_swap(&[], amount, parts);
             }
         }
     }
@@ -87,4 +86,45 @@ impl<'a> Swapper for TokenSwap<'a> {
             SwapperType::Test => Ok(()),
         }
     }
+}
+
+pub fn process_test_calculate_swap(
+    _accounts: &[AccountInfo],
+    amount: u64,
+    parts: u64,
+) -> Result<(Vec<u64>, u64), ProgramError> {
+    let amounts = swappers::linear_interpolation(amount, parts);
+    let trade_direction = spl_token_swap::curve::calculator::TradeDirection::AtoB;
+
+    let curve = spl_token_swap::curve::base::SwapCurve {
+        curve_type: spl_token_swap::curve::base::CurveType::ConstantProduct,
+        calculator: Box::new(spl_token_swap::curve::constant_product::ConstantProductCurve {}),
+    };
+    // curve.swap_without_fees(source_amount: u128, _swap_source_amount: u128, _swap_destination_amount: u128, trade_direction: TradeDirection)
+    let source_amount = amount;
+    let destination_amount = 1000000;
+    let mut rets = vec![0; amounts.len()];
+
+    for i in 0..amounts.len() {
+        let result = curve
+            .swap(
+                to_u128(amounts[i])?,
+                to_u128(source_amount)?,
+                destination_amount,
+                trade_direction,
+                &spl_token_swap::curve::fees::Fees {
+                    trade_fee_numerator: 0,
+                    trade_fee_denominator: 0,
+                    owner_trade_fee_numerator: 0,
+                    owner_trade_fee_denominator: 0,
+                    owner_withdraw_fee_numerator: 0,
+                    owner_withdraw_fee_denominator: 0,
+                    host_fee_numerator: 0,
+                    host_fee_denominator: 0,
+                },
+            )
+            .ok_or(ProgramError::Custom(1))?;
+        rets[i] = to_u64(result.destination_amount_swapped)?;
+    }
+    Ok((rets, 0))
 }
