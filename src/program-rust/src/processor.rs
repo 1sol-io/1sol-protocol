@@ -353,7 +353,7 @@ impl Processor {
         parts: u64, // Number of pieces source volume could be splitted
         swapper: &[TokenSwap],
     ) -> Vec<u64> {
-        let mut at_least_one_positive = false;
+        // let mut at_least_one_positive = false;
         let size = swapper.len();
         let mut matrix: Vec<Vec<i64>> = vec![vec![0; (parts + 1) as usize]; size];
         let mut gases = vec![0; size];
@@ -366,19 +366,21 @@ impl Processor {
             gases[i as usize] = gas;
             for j in 0..rets.len() {
                 matrix[i][j + 1] = (rets[j] as i64) - (gas as i64);
-                at_least_one_positive = at_least_one_positive || (matrix[i][j + 1] > 0);
+                // at_least_one_positive = at_least_one_positive || (matrix[i][j + 1] > 0);
             }
         }
 
-        if !at_least_one_positive {
-            for i in 0..size {
-                for j in 1..parts + 1 {
-                    if matrix[i as usize][j as usize] == 0 {
-                        matrix[i as usize][j as usize] = MIN;
-                    }
-                }
-            }
-        }
+        println!("matrix: {:?}", matrix);
+
+        // if !at_least_one_positive {
+        //     for i in 0..size {
+        //         for j in 1..parts + 1 {
+        //             if matrix[i as usize][j as usize] == 0 {
+        //                 matrix[i as usize][j as usize] = MIN;
+        //             }
+        //         }
+        //     }
+        // }
 
         let distribution = Self::_find_best_distribution(parts, matrix, size);
 
@@ -431,11 +433,15 @@ mod tests {
         ];
         let result = Processor::get_expected_return_with_gas(10, 10, &swappers[..]);
         println!("getExpectedReturnWithGas: {:?}", result);
-        assert_eq!(result, vec![9, 1]);
+        assert_eq!(result, vec![5, 5]);
 
         let result = Processor::get_expected_return_with_gas(10, 8, &swappers[..]);
         println!("getExpectedReturnWithGas: {:?}", result);
-        assert_eq!(result, vec![7, 1])
+        assert_eq!(result, vec![4, 4]);
+
+        let result = Processor::get_expected_return_with_gas(10, 9, &swappers[..]);
+        println!("getExpectedReturnWithGas: {:?}", result);
+        assert_eq!(result, vec![5, 4]);
         // assert_eq!(result, vec![90, 10]);
     }
 

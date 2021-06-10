@@ -88,8 +88,8 @@ pub fn process_token_swap_calculate_swap(
         spl_token_swap::curve::calculator::TradeDirection::BtoA
     };
 
-    let mut source_amount = source_account.amount;
-    let mut destination_amount = dest_account.amount;
+    let source_amount = source_account.amount;
+    let destination_amount = dest_account.amount;
 
     for i in 0..amounts.len() {
         let result = token_swap_info
@@ -103,8 +103,6 @@ pub fn process_token_swap_calculate_swap(
             )
             .ok_or(OneSolError::ZeroTradingTokens)?;
         rets[i] = to_u64(result.destination_amount_swapped)?;
-        source_amount = to_u64(result.new_swap_source_amount)?;
-        destination_amount = to_u64(result.new_swap_destination_amount)?;
     }
     Ok((rets, 0))
 }
