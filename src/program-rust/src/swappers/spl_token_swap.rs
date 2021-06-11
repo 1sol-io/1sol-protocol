@@ -65,18 +65,16 @@ pub fn process_token_swap_calculate_swap(
     amount: u64,
     parts: u64,
 ) -> Result<(Vec<u64>, u64), ProgramError> {
-    let (_, acc) = accounts.split_at(5);
+    let (_, acc) = accounts.split_at(4);
     let account_iters = &mut acc.iter();
+    let swap_info = next_account_info(account_iters)?;
+    next_account_info(account_iters)?;
     let swap_source_info = next_account_info(account_iters)?;
     let swap_destination_info = next_account_info(account_iters)?;
-    next_account_info(account_iters)?;
-    next_account_info(account_iters)?;
-    let token_swap_program_info = next_account_info(account_iters)?;
 
     let amounts = linear_interpolation(amount, parts);
     let mut rets = vec![0; amounts.len()];
-    let token_swap_info =
-        spl_token_swap::state::SwapVersion::unpack(&token_swap_program_info.data.borrow())?;
+    let token_swap_info = spl_token_swap::state::SwapVersion::unpack(&swap_info.data.borrow())?;
     let source_account =
         unpack_token_account(&swap_source_info, &token_swap_info.token_program_id())?;
     let dest_account =
@@ -102,6 +100,7 @@ pub fn process_token_swap_calculate_swap(
                 token_swap_info.fees(),
             )
             .ok_or(OneSolError::ZeroTradingTokens)?;
+
         rets[i] = to_u64(result.destination_amount_swapped)?;
     }
     Ok((rets, 0))
