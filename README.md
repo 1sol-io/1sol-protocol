@@ -1,5 +1,7 @@
 # 1sol protcol 
 
+![Github Actions](https://github.com/1sol-io/1sol-protocol/actions/workflows/main.yml/badge.svg?branch=master)
+
 Recently, there have been increasing number of projects focused on infrastructure building including DEXs, lending and DeFi platforms on Solana. The emergence of DEXs and building out aggregators will bring a lot of benefits for DeFi on the Solana ecosystem. In the field of DeFi, there have been more and more transactions that want to get onto to Solana via cross-chain, and currently we don't have a convenient way to do so.
 
 So we decided to create 1Sol.
@@ -17,12 +19,10 @@ So we decided to create 1Sol.
 4. modify all token-swap program id to your id
 5. deploy onesol-protocol program
 6. modify onesol-protocol program id in src/js/src/index.ts
-6. run `yarn start` to test
+7. run `yarn start` to test
 
 ### Program id
-```
-26XgL6X46AHxcMkfDNfnfQHrqZGzYEcTLj9SmAV5dLrV
-```
+`26XgL6X46AHxcMkfDNfnfQHrqZGzYEcTLj9SmAV5dLrV`
 
 ## TODO
 
