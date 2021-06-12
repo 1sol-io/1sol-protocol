@@ -1,4 +1,4 @@
-# 1sol contract
+# 1sol protcol 
 
 Recently, there have been increasing number of projects focused on infrastructure building including DEXs, lending and DeFi platforms on Solana. The emergence of DEXs and building out aggregators will bring a lot of benefits for DeFi on the Solana ecosystem. In the field of DeFi, there have been more and more transactions that want to get onto to Solana via cross-chain, and currently we don't have a convenient way to do so.
 
@@ -21,7 +21,7 @@ So we decided to create 1Sol.
 
 ### Program id
 ```
-Dm4bCGrSQ4rKLn2f6SJ46BbHdaexFMjyrKy25qxAmZ7P
+26XgL6X46AHxcMkfDNfnfQHrqZGzYEcTLj9SmAV5dLrV
 ```
 
 ## TODO
