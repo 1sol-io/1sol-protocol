@@ -8,7 +8,7 @@ exclude = ["js/**"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-solana-program = "1.7.0"
+solana-program = "1.7.3"
 thiserror = "1.0"
 arrayref = "0.3.6"
 num-derive = "0.3.3"
@@ -17,7 +17,7 @@ spl-token = { version = "3.1.1", features = ["no-entrypoint"]}
 spl-token-swap = { version = "2.1.0", features = ["no-entrypoint"]}
 
 [dev-dependencies]
-solana-sdk = "1.7.0"
+solana-sdk = "1.7.3"
 
 [lib]
 crate-type = ["cdylib", "lib"]
