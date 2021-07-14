@@ -40,7 +40,7 @@ pub enum OneSolError {
     #[error("Invalid program address generated from nonce and key")]
     InvalidProgramAddress,
 
-    /// The deserialization of the account returned something besides State::Account.
+    /// The deserialized the account returned something besides State::Account.
     #[error("Deserialized account is not an SPL Token account")]
     ExpectedAccount,
 
@@ -58,6 +58,18 @@ pub enum OneSolError {
     /// Internal error
     #[error("internal error")]
     InternalError,
+
+    /// Dex Instruction Error
+    #[error("dex market instruction error")]
+    DexInstructionError,
+
+    /// Dex Invoke Error
+    #[error("dex market invoke error")]
+    DexInvokeError,
+
+    /// Dex Swap Error
+    #[error("dex market swap error")]
+    DexSwapError,
 }
 impl From<OneSolError> for ProgramError {
     fn from(e: OneSolError) -> Self {
@@ -69,3 +81,5 @@ impl<T> DecodeError<T> for OneSolError {
         "OneSolError"
     }
 }
+
+// type OnesolResult<T> = Result<T, dyn std::error::Error>;

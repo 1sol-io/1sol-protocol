@@ -19,6 +19,7 @@ jobs:
       runs-on: ubuntu-latest
       needs:
         - rustfmt
+        - test
       steps:
         - run: echo "Done"
   rustfmt:
@@ -33,9 +34,7 @@ jobs:
           components: rustfmt
       - name: Run fmt
         run: |
-          pushd src/program-rust
           cargo fmt --all -- --check
-          popd
   # This workflow contains a single job called "build"
   test:
     # The type of runner that the job will run on
@@ -52,10 +51,10 @@ jobs:
       
       - name: install solana cli
         run: |
-          sh -c "$(curl -sSfL https://release.solana.com/v1.6.10/install)"
+          sh -c "$(curl -sSfL https://release.solana.com/v1.7.11/install)"
           echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
       # Runs a set of commands using the runners shell
       - name: run test
         run: |
-          cargo test-bpf
+          cargo test

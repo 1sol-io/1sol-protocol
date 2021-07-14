@@ -19,14 +19,15 @@ So we decided to create 1Sol.
 1. `yarn install`
 2. `yarn cluster:localhost`
 3. deploy your dev token-swap program
-4. modify all token-swap program id to your id
+4. deploy your dev serum-dex program
 5. deploy onesol-protocol program
-6. modify onesol-protocol program id in src/js/src/index.ts
-7. run `yarn start` to test
+6. copy sample-dev to `.dev`
+7. modify `token-swap` `serum-dex` `onesol-protocol` program id to your id
+8. run `yarn start` to test
 
 ## Program id
 ### devnet 
-`26XgL6X46AHxcMkfDNfnfQHrqZGzYEcTLj9SmAV5dLrV`
+`HEQQHE6U6xp4aurpZFoBNguusLWs3cyyxV9A2qUA9cQo`
 
 ## TODO
 

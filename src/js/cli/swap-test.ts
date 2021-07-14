@@ -5,34 +5,62 @@ import {
     PublicKey,
     SystemProgram,
     Transaction,
+    TransactionInstruction,
 } from '@solana/web3.js';
-import {AccountLayout, Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
+import {Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {TokenSwap, TokenSwapLayout} from '@solana/spl-token-swap';
+import {
+  DexInstructions,
+  Market,
+  MARKET_STATE_LAYOUT_V2,
+  OpenOrders
+} from '@project-serum/serum';
 
-import {OneSolProtocol, ONESOL_PROTOCOL_PROGRAM_ID, TokenSwapInfo, loadAccount} from '../src/onesol-protocol';
+import {
+  OneSolProtocol,
+  TokenSwapInfo,
+  loadAccount,
+  realSendAndConfirmTransaction,
+  SerumDexMarketInfo,
+  Numberu64
+} from '../src/onesol-protocol';
 import {newAccountWithLamports} from './util/new-account-with-lamports';
-import {tokenSwapProgramId, url} from './util/url';
+import {envConfig} from './util/url';
 import {sleep} from './util/sleep';
+import { BN } from 'bn.js';
 
-let tokenSwapProgramPubKey: PublicKey = new PublicKey(
-  tokenSwapProgramId
+const tokenSwapProgramPubKey: PublicKey = new PublicKey(
+  envConfig.splTokenSwapProgramId,
+);
+const serumDexProgramPubKey: PublicKey = new PublicKey(
+  envConfig.serumDexProgramId,
+);
+const onesolProtocolProgramId: PublicKey = new PublicKey(
+  envConfig.onesolProtocolProgramId,
 );
 
-let payer: Account;
-// owner of the user accounts
-let owner: Account;
+let basePayer: Keypair;
+// // owner of the user accounts
+let baseOwner: Keypair;
 
 const onesolOwner = Keypair.generate();
 
-let tokenSwapAccount: Account;
-let onesolProtocolAccount: Account;
+let tokenSwapAccount: Keypair;
+let onesolProtocolAccount: Keypair;
 
 // Tokens swapped
-let tokenPool: Token;
-let mintA: Token;
-let mintB: Token;
-let tokenAccountA: PublicKey;
-let tokenAccountB: PublicKey;
+let tokenMintPool: Token;
+let tokenMintA: Token;
+let tokenMintB: Token;
+
+let swapTokenAAccount: PublicKey;
+let swapTokenBAccount: PublicKey;
+
+let serumTokenAAccount: PublicKey;
+let serumTokenBAccount: PublicKey;
+
+let serumMarket: Keypair;
+let serumDefaultMarketOpenOrder: Keypair;
 
 // Hard-coded fee address, for testing production mode
 const SWAP_PROGRAM_OWNER_FEE_ADDRESS =
@@ -61,7 +89,7 @@ let currentFeeAmount = 0;
 // need to get slightly tweaked in the two cases.
 const SWAP_AMOUNT_IN = 100000;
 // const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90661 : 90674;
-const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90000 : 90000;
+const SWAP_AMOUNT_OUT = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 90600: 90600;
 const SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS ? 22273 : 22276;
 const HOST_SWAP_FEE = SWAP_PROGRAM_OWNER_FEE_ADDRESS
   ? Math.floor((SWAP_FEE * HOST_FEE_NUMERATOR) / HOST_FEE_DENOMINATOR)
@@ -84,149 +112,283 @@ let connection: Connection;
 async function getConnection(): Promise<Connection> {
   if (connection) return connection;
 
-  connection = new Connection(url, 'recent');
+  connection = new Connection(envConfig.url, 'recent');
   const version = await connection.getVersion();
 
-  console.log('Connection to cluster established:', url, version);
+  console.log('Connection to cluster established:', envConfig.url, version);
   return connection;
 }
 
+export async function prepareAccounts(): Promise<void> {
+  const connection = await getConnection();
+  basePayer = await newAccountWithLamports(connection, 1000000000);
+  baseOwner = await newAccountWithLamports(connection, 1000000000);
+
+  console.log('Creating TokenMintA');
+  tokenMintA = await Token.createMint(
+    connection,
+    new Account(basePayer.secretKey),
+    baseOwner.publicKey,
+    null,
+    2,
+    TOKEN_PROGRAM_ID,
+  );
+  console.log('TokenMintA: ' + tokenMintA.publicKey.toString())
+
+  console.log('Creating TokenMintB');
+  tokenMintB = await Token.createMint(
+    connection,
+    new Account(basePayer.secretKey),
+    baseOwner.publicKey,
+    null,
+    2,
+    TOKEN_PROGRAM_ID,
+  );
+  console.log('TokenMintB: ' + tokenMintB.publicKey.toString())
+
+}
+
 export async function prepareTokenSwap(): Promise<void> {
-    const connection = await getConnection();
-    payer = await newAccountWithLamports(connection, 1000000000);
-    owner = await newAccountWithLamports(connection, 1000000000);
-    tokenSwapAccount = new Account();
+  const connection = await getConnection(); 
 
-    // authority of the token and accounts
-    let authority: PublicKey;
-    // nonce used to generate the authority public key
-    let nonce: number; 
-    [authority, nonce] = await PublicKey.findProgramAddress(
-      [tokenSwapAccount.publicKey.toBuffer()],
-      tokenSwapProgramPubKey,
-    );
+  tokenSwapAccount = Keypair.generate();
+  // authority of the token and accounts
+  let [authority, nonce] = await PublicKey.findProgramAddress(
+    [tokenSwapAccount.publicKey.toBuffer()],
+    tokenSwapProgramPubKey,
+  );
 
-    console.log('creating pool mint');
-    tokenPool = await Token.createMint(
-      connection,
-      payer,
-      authority,
-      null,
-      2,
-      TOKEN_PROGRAM_ID,
-    );
-  
-    console.log('creating pool account');
-    const tokenAccountPool = await tokenPool.createAccount(owner.publicKey);
-    const ownerKey = SWAP_PROGRAM_OWNER_FEE_ADDRESS || owner.publicKey.toString();
-    const feeAccount = await tokenPool.createAccount(new PublicKey(ownerKey));
-  
-    console.log('creating token A');
-    mintA = await Token.createMint(
-      connection,
-      payer,
-      owner.publicKey,
-      null,
-      2,
-      TOKEN_PROGRAM_ID,
-    );
-  
-    console.log('creating token A account');
-    tokenAccountA = await mintA.createAccount(authority);
-    console.log('token A account address: ' + tokenAccountA.toString());
-    console.log('minting token A to swap');
-    await mintA.mintTo(tokenAccountA, owner, [], currentSwapTokenA);
-  
-    console.log('creating token B');
-    mintB = await Token.createMint(
-      connection,
-      payer,
-      owner.publicKey,
-      null,
-      2,
-      TOKEN_PROGRAM_ID,
-    );
-  
-    console.log('creating token B account');
-    tokenAccountB = await mintB.createAccount(authority);
-    console.log('token B account address: ' + tokenAccountB.toString());
-    console.log('minting token B to swap');
-    await mintB.mintTo(tokenAccountB, owner, [], currentSwapTokenB);
-  
-    console.log('creating token swap');
-    const swapPayer = await newAccountWithLamports(connection, 10000000000);
-    let tokenSwap = await TokenSwap.createTokenSwap(
-      connection,
-      swapPayer,
-      tokenSwapAccount,
-      authority,
-      tokenAccountA,
-      tokenAccountB,
-      tokenPool.publicKey,
-      mintA.publicKey,
-      mintB.publicKey,
-      feeAccount,
-      tokenAccountPool,
-      tokenSwapProgramPubKey,
-      TOKEN_PROGRAM_ID,
-      nonce,
-      TRADING_FEE_NUMERATOR,
-      TRADING_FEE_DENOMINATOR,
-      OWNER_TRADING_FEE_NUMERATOR,
-      OWNER_TRADING_FEE_DENOMINATOR,
-      OWNER_WITHDRAW_FEE_NUMERATOR,
-      OWNER_WITHDRAW_FEE_DENOMINATOR,
-      HOST_FEE_NUMERATOR,
-      HOST_FEE_DENOMINATOR,
-      CURVE_TYPE,
-    );
+  console.log('[TokenSwap] Creating TokenMintPool');
+  tokenMintPool = await Token.createMint(
+    connection,
+    new Account(basePayer.secretKey),
+    authority,
+    null,
+    2,
+    TOKEN_PROGRAM_ID,
+  );
 
-    console.log('token swap created');
+  console.log('[TokenSwap] Creating TokenPool account');
+  const tokenAccountPool = await tokenMintPool.createAccount(baseOwner.publicKey);
+  const feeAccount = await tokenMintPool.createAccount(baseOwner.publicKey);
 
+  console.log('[TokenSwap] Creating TokenA account');
+  swapTokenAAccount = await tokenMintA.createAccount(authority);
+  await tokenMintA.mintTo(swapTokenAAccount, new Account(baseOwner.secretKey), [], currentSwapTokenA);
+  console.log('[TokenSwap] TokenA account address: ' + swapTokenAAccount.toString());
+
+
+  console.log('[TokenSwap] Creating TokenB account');
+  swapTokenBAccount = await tokenMintB.createAccount(authority);
+  await tokenMintB.mintTo(swapTokenBAccount, new Account(baseOwner.secretKey), [], currentSwapTokenB);
+  console.log('[TokenSwap] TokenB account address: ' + swapTokenBAccount.toString());
+
+  console.log('[TokenSwap] creating token swap');
+  const swapPayer = await newAccountWithLamports(connection, 10000000000);
+  let tokenSwap = await TokenSwap.createTokenSwap(
+    connection,
+    new Account(swapPayer.secretKey),
+    new Account(tokenSwapAccount.secretKey),
+    authority,
+    swapTokenAAccount,
+    swapTokenBAccount,
+    tokenMintPool.publicKey,
+    tokenMintA.publicKey,
+    tokenMintB.publicKey,
+    feeAccount,
+    tokenAccountPool,
+    tokenSwapProgramPubKey,
+    TOKEN_PROGRAM_ID,
+    nonce,
+    TRADING_FEE_NUMERATOR,
+    TRADING_FEE_DENOMINATOR,
+    OWNER_TRADING_FEE_NUMERATOR,
+    OWNER_TRADING_FEE_DENOMINATOR,
+    OWNER_WITHDRAW_FEE_NUMERATOR,
+    OWNER_WITHDRAW_FEE_DENOMINATOR,
+    HOST_FEE_NUMERATOR,
+    HOST_FEE_DENOMINATOR,
+    CURVE_TYPE,
+  );
+
+  console.log('[TokenSwap] token swap created');
+
+}
+
+export async function prepareSerumDex(): Promise<void>{
+  const connection = await getConnection();
+
+  const serumDexPayer = await newAccountWithLamports(connection, 90000000000);
+  await connection.requestAirdrop(serumDexPayer.publicKey, 90000000000);
+  serumMarket = Keypair.generate();
+
+  console.log("[SerumDex] serum_dex program: " + serumDexProgramPubKey);
+  console.log("[SerumDex] serum_market publickey: " + serumMarket.publicKey);
+  // authority of the token and accounts
+
+  async function getVaultOwnerAndNonce(): Promise<[PublicKey, any]> {
+    const nonce = new BN(0);
+    while (true) {
+      try {
+        const vaultOwner = await PublicKey.createProgramAddress(
+          [serumMarket.publicKey.toBuffer(), nonce.toArrayLike(Buffer, 'le', 8)],
+          serumDexProgramPubKey,
+        );
+        return [vaultOwner, nonce];
+      } catch (e) {
+        nonce.iaddn(1);
+      }
+    }
+  }
+
+  const [vaultOwner, vaultSignerNonce] = await getVaultOwnerAndNonce();
+
+  console.log("[SerumDex] authority: " + vaultOwner);
+  console.log("[SerumDex] nonce: " + vaultSignerNonce);
+
+  console.log('[SerumDex] Creating TokenA account');
+  serumTokenAAccount = await tokenMintA.createAccount(vaultOwner);
+  await tokenMintA.mintTo(serumTokenAAccount, new Account(baseOwner.secretKey), [], currentSwapTokenA);
+  console.log('[SerumDex] TokenA account address: ' + serumTokenAAccount.toString());
+
+
+  console.log('[SerumDex] Creating TokenB account');
+  serumTokenBAccount = await tokenMintB.createAccount(vaultOwner);
+  await tokenMintB.mintTo(serumTokenBAccount, new Account(baseOwner.secretKey), [], currentSwapTokenB);
+  console.log('[SerumDex] TokenB account address: ' + serumTokenBAccount.toString());
+
+ 
+  let requestQueue = Keypair.generate();
+  let eventQueue = Keypair.generate();
+  let bids = Keypair.generate();
+  let asks = Keypair.generate();
+
+  let transactions = new Transaction();
+  
+  transactions.add(await createDexAccount(connection, serumDexPayer.publicKey, serumMarket.publicKey, MARKET_STATE_LAYOUT_V2.span));
+  transactions.add(await createDexAccount(connection, serumDexPayer.publicKey, requestQueue.publicKey, 5120 + 12));
+  transactions.add(await createDexAccount(connection, serumDexPayer.publicKey, eventQueue.publicKey, 262144 + 12));
+  transactions.add(await createDexAccount(connection, serumDexPayer.publicKey, bids.publicKey, 65536 + 12));
+  transactions.add(await createDexAccount(connection, serumDexPayer.publicKey, asks.publicKey, 65536 + 12));
+
+  // await realSendAndConfirmTransaction("prepare accounts", connection, transactions, serumDexPayer);
+
+  // let m = Market.getLayout()
+  // initial market    
+  // let transaction2 = new Transaction();
+
+  let initializeInstruction = DexInstructions.initializeMarket({
+    market: serumMarket.publicKey,
+    requestQueue: requestQueue.publicKey,
+    eventQueue: eventQueue.publicKey,
+    bids: bids.publicKey,
+    asks: asks.publicKey,
+    baseVault: serumTokenAAccount,
+    quoteVault: serumTokenBAccount,
+    baseMint: tokenMintA.publicKey,
+    quoteMint: tokenMintB.publicKey,
+    baseLotSize: new BN(1),
+    quoteLotSize: new BN(1),
+    feeRateBps: 1,
+    vaultSignerNonce: vaultSignerNonce,
+    quoteDustThreshold: new BN(5),
+    programId: serumDexProgramPubKey,
+  });
+  transactions.add(initializeInstruction);
+  let l = await realSendAndConfirmTransaction("setup_market", connection, transactions, serumDexPayer, serumMarket, requestQueue, eventQueue, bids, asks);
+  // console.log('[SerumDex] l: ' + l)
+  console.log('[SerumDex] SetupMarket: ' + serumMarket.publicKey);
+
+  let market = await Market.load(connection, serumMarket.publicKey, {
+  }, serumDexProgramPubKey);
+
+  console.log("[SerumDex] Load Market: " + market.address);
+
+  console.log('[SerumDex] Creating Order TokenB account');
+  let serumOrderTokenA = await tokenMintA.createAccount(serumDexPayer.publicKey);
+  await tokenMintA.mintTo(serumOrderTokenA, new Account(baseOwner.secretKey), [], currentSwapTokenB);
+  console.log('[SerumDex] Order TokenB account address: ' + serumOrderTokenA.toString());
+
+  serumDefaultMarketOpenOrder = Keypair.generate();
+
+  console.log("[SerumDex] PlaceOrder: " + serumDefaultMarketOpenOrder.publicKey);
+  let result = await market.placeOrder(connection, {
+    owner: new Account(serumDexPayer.secretKey),
+    payer: serumOrderTokenA,
+    side: "sell",
+    price: 1,
+    size: 10000,
+    clientId: new BN(12306),
+    openOrdersAccount: new Account(serumDefaultMarketOpenOrder.secretKey),
+    selfTradeBehavior: 'cancelProvide',
+    feeDiscountPubkey: serumDexPayer.publicKey
+  });
+  console.log("[SerumDEX] placeOrder: " + result);
+
+  let tmpOrder = await OpenOrders.load(connection, serumDefaultMarketOpenOrder.publicKey, serumDexProgramPubKey);
+  console.log("[SerumDEX] openOrder, address: " + tmpOrder.address);
+  console.log("[SerumDEX] openOrder, base: " + tmpOrder.baseTokenTotal);
+  console.log("[SerumDEX] openOrder, quote: " + tmpOrder.quoteTokenTotal);
+}
+
+async function createDexAccount(
+  connection: Connection,
+  fromPubkey: PublicKey,
+  newAccountPubkey: PublicKey,
+  space: number
+): Promise<TransactionInstruction> {
+  let lamports = await connection.getMinimumBalanceForRentExemption(space);
+  return SystemProgram.createAccount({
+    fromPubkey: fromPubkey,
+    newAccountPubkey: newAccountPubkey,
+    lamports: lamports,
+    space: space,
+    programId: serumDexProgramPubKey,
+  });
 }
 
 export async function createOneSolProtocol(): Promise<void> {
   const connection = await getConnection();
-  console.log('creating onesolProtocol');
+  console.log('[OnesolProtocol] creating onesolProtocol');
 
   // await connection.requestAirdrop(onesolOwner.publicKey, 10000);
-  onesolProtocolAccount = new Account();
+  onesolProtocolAccount = Keypair.generate();
 
   let [authority, nonce] = await PublicKey.findProgramAddress(
     [onesolProtocolAccount.publicKey.toBuffer()],
-    ONESOL_PROTOCOL_PROGRAM_ID,
+    onesolProtocolProgramId,
   );
   // let payer = Keypair.fromSecretKey
 
-  console.log('creating middle TokenB account');
-  let tokenBAccount = await mintB.createAccount(authority);
-  console.log('middle tokenB account address: ' + tokenBAccount.toString());
-  await mintB.mintTo(tokenAccountB, owner, [], 0);
+  console.log('[OnesolProtocol] creating middle TokenA account');
+  let tokenAAccount = await tokenMintA.createAccount(authority);
+  // await tokenMintB.mintTo(tokenBAccount, baseOwner, [], 0);
+  // console.log('middle tokenB account address: ' + tokenBAccount.toString());
 
-  console.log("create OneSolProtocol account");
+  console.log("[OnesolProtocol] create OneSolProtocol account");
   let onesolProtocol = await OneSolProtocol.createOneSolProtocol(
     connection,
     onesolProtocolAccount,
-    tokenBAccount,
+    tokenAAccount,
     TOKEN_PROGRAM_ID,
     authority,
     nonce,
-    payer,
-    ONESOL_PROTOCOL_PROGRAM_ID, 
+    Keypair.fromSecretKey(basePayer.secretKey),
+    onesolProtocolProgramId, 
   );
-  console.log("OneSolProtocol account created");
+  console.log("[OnesolProtocol] OneSolProtocol account created");
   let fetchedAccount = await OneSolProtocol.loadOneSolProtocol(
     connection,
     onesolProtocolAccount.publicKey, 
-    ONESOL_PROTOCOL_PROGRAM_ID,
-    payer,
+    onesolProtocolProgramId,
+    basePayer.publicKey,
   );
   assert(fetchedAccount.tokenProgramId.equals(TOKEN_PROGRAM_ID));
-  assert(fetchedAccount.tokenAccountKey.equals(tokenBAccount));
+  assert(fetchedAccount.tokenAccountKey.equals(tokenAAccount));
   assert(fetchedAccount.authority.equals(authority));
   assert(fetchedAccount.nonce == nonce);
-  console.log("authority: " + fetchedAccount.authority.toString());
-  console.log("nonce: " + nonce);
+  console.log("[OnesolProtocol] authority: " + fetchedAccount.authority.toString());
+  console.log("[OnesolProtocol] nonce: " + nonce);
 
 };
 
@@ -234,90 +396,125 @@ export async function swap(): Promise<void> {
   const connection = await getConnection();
 
   const alice = await newAccountWithLamports(connection, 1000000000);
-  let poolAccount = SWAP_PROGRAM_OWNER_FEE_ADDRESS
-  ? await tokenPool.createAccount(owner.publicKey)
-  : null;
+  // const userTransferAuthority = new Account();
 
-  console.log("load TokenSwapInfo");
+  console.log("[OnesolProtocol] load TokenSwapInfo");
   const tokenSwapInfo = await loadTokenSwapInfo(
     connection,
     tokenSwapAccount.publicKey,
     tokenSwapProgramPubKey,
-    poolAccount,
+    new Numberu64(49000),
+    new Numberu64(40000),
+    null,
   )
 
-  console.log("load OneSolProtocolInfo");
+  console.log("[OnesolProtocol] load OneSolProtocolInfo");
   let onesolProtocol = await OneSolProtocol.loadOneSolProtocol(
     connection,
     onesolProtocolAccount.publicKey, 
-    ONESOL_PROTOCOL_PROGRAM_ID,
-    alice,
+    onesolProtocolProgramId,
+    alice.publicKey,
   );
 
 
-  const userTransferAuthority = new Account();
+  console.log('[OnesolProtocol] Creating Alice TokenA account');
+  let userAccountA = await tokenMintA.createAccount(alice.publicKey);
+  // await tokenMintA.mintTo(userAccountA, new Account(baseOwner.secretKey), [], SWAP_AMOUNT_IN);
 
-  console.log('Creating Alice TokenA account');
-  let userAccountA = await mintA.createAccount(alice.publicKey);
-  await mintA.mintTo(userAccountA, owner, [], SWAP_AMOUNT_IN);
-  await mintA.approve(
-    userAccountA,
-    userTransferAuthority.publicKey,
-    alice,
-    [],
-    SWAP_AMOUNT_IN,
+  // await tokenMintA.approve(
+  //   userAccountA,
+  //   userTransferAuthority.publicKey,
+  //   alice,
+  //   [],
+  //   SWAP_AMOUNT_IN,
+  // );
+
+  console.log('[OnesolProtocol] Alice TokenA Account: ' + userAccountA.toString())
+
+  console.log('[OnesolProtocol] Creating Alice TokenB account');
+  let userAccountB = await tokenMintB.createAccount(alice.publicKey);
+  await tokenMintB.mintTo(userAccountB, new Account(baseOwner.secretKey), [], SWAP_AMOUNT_IN);
+  console.log('[OnesolProtocol] Alice TokenB Account: ' + userAccountB.toString())
+
+  let userTokenAccountAInfo = await tokenMintA.getAccountInfo(userAccountA);
+  console.log("[OnesolProtocol] user TokenA amount:" + userTokenAccountAInfo.amount.toNumber());
+  let userTokenAccountBInfo = await tokenMintB.getAccountInfo(userAccountB);
+  console.log("[OnesolProtocol] user TokenB amount:" + userTokenAccountBInfo.amount.toNumber());
+
+  console.log("[OnesolProtocol] authority: " + onesolProtocol.authority.toString());
+  console.log('[OnesolProtocol] Swapping');
+
+  console.log("[OnesolProtocol] load serumMarket")
+  let market = await Market.load(connection, serumMarket.publicKey, {}, serumDexProgramPubKey)
+
+
+  // let openOrder = await OpenOrders.load(connection, serumDefaultMarketOpenOrder.publicKey, serumDexProgramPubKey);
+  console.log("[OnesolProtocol][SerumDex] market: " + market.address +
+   ", baseLotSize: " + market.decoded.baseLotSize +
+   ", quoteLoteSize: " + market.decoded.quoteLotSize +
+   ", quoteDustThreshold:" + market.decoded.quoteDustThreshold
   );
 
-  console.log('Alice TokenA Account: ' + userAccountA.toString())
+  // let size = 500;
+  // let price = 1;
+  // let serumTradeInfo = SerumDexMarketInfo.create(market, price, size, new Numberu64(65536));
+  // let limitPrice = market.priceNumberToLots(price);
+  // let maxBaseQuantity = market.baseSizeNumberToLots(size);
+  // let maxQuoteQuantity = new BN(market.decoded.quoteLotSize.toNumber()).mul(
+  //   market.baseSizeNumberToLots(size).mul(market.priceNumberToLots(price)),
+  // );
+  
+  let serumTradeInfo = new SerumDexMarketInfo(
+    serumDexProgramPubKey,
+    market,
+    new Numberu64(1),
+    new Numberu64(51000),
+    new Numberu64(51000),
+    new Numberu64(65535),
+  );
 
-  console.log('Creating Alice TokenB account');
-  let userAccountB = await mintB.createAccount(alice.publicKey);
-  console.log('Alice TokenB Account: ' + userAccountB.toString())
-
-  let info;
-  info = await mintA.getAccountInfo(userAccountA);
-  console.log("userA:" + info.amount.toNumber());
-  info = await mintB.getAccountInfo(userAccountB);
-  console.log("userB:" + info.amount.toNumber());
-  console.log("authority: " + onesolProtocol.authority.toString());
-  console.log('Swapping');
-
-// tokenAccountA,
-//     tokenAccountB,
-
+  // await onesolProtocol.swap(
+  //   userAccountA,
+  //   tokenMintA.publicKey,
+  //   userAccountB,
+  //   SWAP_AMOUNT_OUT,
+  //   tokenSwapInfo,
+  //   serumTradeInfo,
+  //   Keypair.fromSecretKey(basePayer.secretKey),
+  // );
   await onesolProtocol.swap(
-    userTransferAuthority,
-    userAccountA,
     userAccountB,
-    SWAP_AMOUNT_IN,
+    tokenMintB.publicKey,
+    userAccountA,
     SWAP_AMOUNT_OUT,
-    [tokenSwapInfo],
-    [100],
+    tokenSwapInfo,
+    serumTradeInfo,
+    alice,
   );
 
   await sleep(500);
   console.log("swap done.")
 
   // let info;
-  info = await mintA.getAccountInfo(userAccountA);
+  let info = await tokenMintA.getAccountInfo(userAccountA);
   console.log("user TokenA amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == 0);
 
-  info = await mintB.getAccountInfo(userAccountB);
+  info = await tokenMintB.getAccountInfo(userAccountB);
   console.log("user TokenB amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == SWAP_AMOUNT_OUT);
 
-  info = await mintB.getAccountInfo(onesolProtocol.tokenAccountKey);
+  info = await tokenMintA.getAccountInfo(onesolProtocol.tokenAccountKey);
   console.log("protocol Token amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == SWAP_AMOUNT_OUT);
 
-  info = await mintA.getAccountInfo(tokenAccountA);
-  console.log("tokenA:" + info.amount.toNumber());
+  info = await tokenMintA.getAccountInfo(swapTokenAAccount);
+  console.log("swapTokenA amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == currentSwapTokenA + SWAP_AMOUNT_IN);
   // currentSwapTokenA += SWAP_AMOUNT_IN;
 
-  info = await mintB.getAccountInfo(tokenAccountB);
-  console.log("tokenB:" + info.amount.toNumber());
+  info = await tokenMintB.getAccountInfo(swapTokenBAccount);
+  console.log("swapTokenB amount:" + info.amount.toNumber());
   // assert(info.amount.toNumber() == currentSwapTokenB - SWAP_AMOUNT_OUT);
   // currentSwapTokenB -= SWAP_AMOUNT_OUT;
 
@@ -339,6 +536,8 @@ export async function loadTokenSwapInfo(
   connection: Connection,
   address: PublicKey,
   programId: PublicKey,
+  amountIn: Numberu64,
+  minimumAmountOut: Numberu64,
   hostFeeAccount: PublicKey | null,
 ): Promise<TokenSwapInfo> {
   const data = await loadAccount(connection, address, programId);
@@ -363,6 +562,8 @@ export async function loadTokenSwapInfo(
   const curveType = tokenSwapData.curveType;
 
   return new TokenSwapInfo(
+    amountIn,
+    minimumAmountOut,
     programId,
     address,
     authority,

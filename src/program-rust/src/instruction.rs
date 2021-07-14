@@ -1,188 +1,216 @@
 //! Instruction types
 
-use crate::error::OneSolError;
+use crate::{error::OneSolError, swappers::serum_dex_order};
+use arrayref::{array_ref, array_refs};
 use solana_program::program_error::ProgramError;
-use std::convert::TryInto;
+use std::num::NonZeroU64;
 
 /// Initialize instruction data
 #[derive(Clone, Debug, PartialEq)]
 pub struct Initialize {
-    /// nonce used to create validate program address
-    pub nonce: u8,
+  /// nonce used to create validate program address
+  pub nonce: u8,
 }
 
 /// Swap instruction data
 #[derive(Clone, Debug, PartialEq)]
-pub struct Swap {
-    /// SOURCE amount to transfer, output to DESTINATION is based on the exchange rate
-    pub amount_in: u64,
-    /// Minimum amount of DESTINATION token to output, prevents excessive slippage
-    pub minimum_amount_out: u64,
-    /// dexes configs
-    pub dex_configs: Vec<DexConfig>,
-    // /// supportTokenSwap
-    // pub token_swap_config: (bool, usize),
-    // /// second token swap config
-    // pub token_swap_2_config: (bool, usize),
+pub struct SwapTokenSwap {
+  /// amount of tokens to swap
+  pub amount_in: NonZeroU64,
+  /// Minimum amount of DESTINATION token to output, prevents excessive slippage
+  pub minimum_amount_out: NonZeroU64,
 }
 
-/// DexConfig
-#[derive(Clone, Debug, PartialEq)]
-pub struct DexConfig {
-    /// dex_type is dex type:
-    ///     0: spl_token_swap
-    pub dex_type: u8,
-    /// account_size: the size of accountInfos
-    pub account_size: usize,
-    /// ratio: the ratio of exchange
-    pub ratio: u8,
+/// Swap instruction data
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub struct SwapSerumDex {
+  /// the amount to swap *from*
+  pub amount_in: u64,
+  /// the direct to swap,
+  ///   when side is "bid" the swaps B to A.
+  ///   when side is "ask" the swaps A to B
+  pub side: serum_dex::matching::Side,
+  /// the exchange range to use when determining whether the transaction should abort
+  pub min_exchange_rate: serum_dex_order::ExchangeRate,
 }
 
-/// Instructions supported by the 1sol constracts program
+/// Instructions supported by the 1sol protocol program
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum OneSolInstruction {
-    /// Initializes a new 1solProtocol
-    /// 0. `[writable, signer]` New 1solProtocol to create.
-    /// 1. `[]` swap authority derived from `create_program_address(&[Token-swap account])`
-    /// 2. `[]` token Account. Must be non zero, owned by 1sol.
-    /// 3. '[]` Token program id
-    Initialize(Initialize),
+  /// Initializes a new 1solProtocol
+  /// 0. `[writable, signer]` New 1solProtocol to create.
+  /// 1. `[]` swap authority derived from `create_program_address(&[Token-swap account])`
+  /// 2. `[]` token Account. Must be non zero, owned by 1sol.
+  /// 3. '[]` Token program id
+  Initialize(Initialize),
 
-    /// Swap the tokens in the pool.
-    ///
-    ///   0. `[]` onesolProotcol account
-    ///   1. `[]` onesolProotcol authority
-    ///   2. `[]` user transfer authority
-    ///   3. `[writeable]` onesolProotcol token account
-    ///   4. `[writable]` token_A SOURCE Account, amount is transferable by user transfer authority,
-    ///   5. `[writable]` token_B DESTINATION Account to swap FROM.  Must be the DESTINATION token.
-    ///   6. '[]` Token program id
-    ///
-    ///   7. `[]` token-swap account
-    ///   8. `[]` token-swap authority
-    ///   9. `[writable]` token_A Base Account to swap INTO.  Must be the SOURCE token.
-    ///   10. `[writable]` token_B Base Account to swap FROM.  Must be the DESTINATION token.
-    ///   11. `[writable]` Pool token mint, to generate trading fees
-    ///   12. `[writable]` Fee account, to receive trading fees
-    ///   13. '[]` Token-Swap program id
-    ///   14 `[optional, writable]` Host fee account to receive additional trading fees
-    Swap(Swap),
+  /// Swap the tokens in the pool.
+  ///
+  ///   0. `[]` OneSol Protocol account
+  ///   1. `[]` OneSol Protocol authority
+  ///   2. `[writeable]` OneSol Protocol token account
+  ///   3. `[writable]` token_A SOURCE Account,
+  ///   4. `[writable]` token_B DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   5. '[]` Token program id
+  ///
+  ///   6. `[signer]` user_transfer_authority account
+  ///   7. `[]` token-swap account
+  ///   8. `[]` token-swap authority
+  ///   9. `[writable]` token_A Base Account to swap FROM.  Must be the SOURCE token.
+  ///   10. `[writable]` token_B Base Account to swap INTO.  Must be the DESTINATION token.
+  ///   11. `[writable]` Pool token mint, to generate trading fees
+  ///   12. `[writable]` Fee account, to receive trading fees
+  ///   13. '[]` Token-Swap program id
+  ///   14. `[optional, writable]` Host fee account to receive additional trading fees
+  SwapTokenSwap(SwapTokenSwap),
+
+  /// Swap the tokens in the serum dex market.
+  ///
+  ///   0. `[]` OneSol Protocol account
+  ///   1. `[]` OneSol Protocol authority
+  ///   2. `[writeable]` OneSol Protocol token account
+  ///   3. `[writable]` token_(A|B) SOURCE Account, (coin_wallet)
+  ///   4. `[writable]` token_(A|B) DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   5. '[]` Token program id
+  ///
+  ///   6. `[writable]`  serum-dex market
+  ///   7. `[writable]`  serum-dex request_queue
+  ///   8. `[writable]`  serum-dex event_queue
+  ///   9. `[writable]`  serum-dex market_bids
+  ///   10. `[writable]`  serum-dex market_asks
+  ///   11. `[writable]`  serum-dex coin_vault
+  ///   12. `[writable]`  serum-dex pc_vault
+  ///   13. `[writable]`  serum-dex vault_signer for settleFunds
+  ///   14. `[writable]`  serum-dex open_orders
+  ///   15. `[signer]`  serum-dex open_orders_owner
+  ///   16. `[]`  serum-dex rent_sysvar
+  ///   17. `[]`  serum-dex serum_dex_program_id
+  SwapSerumDex(SwapSerumDex),
 }
 
 impl OneSolInstruction {
-    /// Unpacks a byte buffer into a [OneSolInstruction](enum.OneSolInstruction.html).
-    pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-        let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
-        Ok(match tag {
-            0 => {
-                let (&nonce, _rest) = rest.split_first().ok_or(OneSolError::InvalidInput)?;
-                Self::Initialize(Initialize { nonce })
-            }
-            1 => {
-                let (amount_in, _rest) = Self::unpack_u64(rest)?;
-                let (minimum_amount_out, _rest) = Self::unpack_u64(_rest)?;
-                let (dex_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
-
-                if dex_configs.len() == 0 {
-                    return Err(OneSolError::InvalidInstruction.into());
-                }
-                Self::Swap(Swap {
-                    amount_in,
-                    minimum_amount_out,
-                    dex_configs,
-                })
-            }
-            _ => return Err(OneSolError::InvalidInstruction.into()),
-        })
-    }
-
-    fn unpack_u64(input: &[u8]) -> Result<(u64, &[u8]), ProgramError> {
-        if input.len() >= 8 {
-            let (amount, rest) = input.split_at(8);
-            let amount = amount
-                .get(..8)
-                .and_then(|slice| slice.try_into().ok())
-                .map(u64::from_le_bytes)
-                .ok_or(OneSolError::InvalidInstruction)?;
-            Ok((amount, rest))
-        } else {
-            Err(OneSolError::InvalidInstruction.into())
-        }
-    }
-
-    /// dexes_configs
-    /// u8: size, [u8: dex_type, u8: account_size, u8: ratio]
-    fn unpack_dexes_configs(input: &[u8]) -> Result<(Vec<DexConfig>, &[u8]), ProgramError> {
-        let (&dexes_config_size, _rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
-        if dexes_config_size < 1 {
-            return Err(OneSolError::InvalidInput.into());
-        }
-        let dexes_config_real_size = (dexes_config_size * 3) as usize;
-        if _rest.len() < dexes_config_real_size {
-            return Err(OneSolError::InvalidInput.into());
-        }
-        let (dexes_configs, _rest) = _rest.split_at(dexes_config_real_size);
-        let mut dexes_iter = dexes_configs.chunks(3);
-        let mut result = vec![];
-        loop {
-            let next = dexes_iter.next();
-            if next.is_none() {
-                break;
-            }
-            let r = next.unwrap();
-            result.push(DexConfig {
-                dex_type: r[0],
-                account_size: r[1] as usize,
-                ratio: r[2],
-            });
-        }
-        Ok((result, _rest))
-    }
+  /// Unpacks a byte buffer into a [OneSolInstruction](enum.OneSolInstruction.html).
+  pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
+    let (&tag, rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
+    Ok(match tag {
+      0 => Self::Initialize(Initialize::unpack(rest)?),
+      1 => Self::SwapTokenSwap(SwapTokenSwap::unpack(rest)?),
+      2 => Self::SwapSerumDex(SwapSerumDex::unpack(rest)?),
+      _ => return Err(OneSolError::InvalidInstruction.into()),
+    })
+  }
 }
 
-impl DexConfig {
-    /// new DexConfig struct
-    pub fn new_dex_config(dex_type: u8, account_size: usize, ratio: u8) -> DexConfig {
-        return DexConfig {
-            dex_type,
-            account_size,
-            ratio,
-        };
+impl Initialize {
+  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
+    if input.len() < 1 {
+      return Err(OneSolError::InvalidInput.into());
     }
+    let (&nonce, _rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
+    Ok(Initialize { nonce })
+  }
+}
+
+impl SwapTokenSwap {
+  // size = 1 or 3
+  // flag[0/1], [account_size], [amount_in], [minium_amount_out]
+  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
+    const DATA_LEN: usize = 16;
+    if input.len() < DATA_LEN {
+      return Err(OneSolError::InvalidInput.into());
+    }
+    let arr_data = array_ref![input, 0, DATA_LEN];
+    let (&amount_in_arr, &minimum_amount_out_arr) = array_refs![arr_data, 8, 8];
+    let amount_in =
+      NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(OneSolError::InvalidInput)?;
+    let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
+      .ok_or(OneSolError::InvalidInput)?;
+    Ok(SwapTokenSwap {
+      amount_in,
+      minimum_amount_out,
+    })
+  }
+}
+
+impl SwapSerumDex {
+  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
+    const DATA_LEN: usize = 20;
+    if input.len() < DATA_LEN {
+      return Err(OneSolError::InvalidInput.into());
+    }
+    let arr_data = array_ref![input, 0, DATA_LEN];
+    let (&amount_in_arr, &[side], &rate_arr, &[from_decimals], &[quote_decimals], &[strict]) =
+      array_refs![arr_data, 8, 1, 8, 1, 1, 1];
+    let amount_in = u64::from_le_bytes(amount_in_arr);
+    let rate = u64::from_le_bytes(rate_arr);
+    Ok(SwapSerumDex {
+      amount_in: amount_in,
+      side: if side == 0 {
+        serum_dex::matching::Side::Bid
+      } else {
+        serum_dex::matching::Side::Ask
+      },
+      min_exchange_rate: serum_dex_order::ExchangeRate {
+        rate: rate,
+        from_decimals: from_decimals,
+        quote_decimals: quote_decimals,
+        strict: if strict == 0 { false } else { true },
+      },
+    })
+  }
 }
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  use arrayref::mut_array_refs;
+  use bytemuck::bytes_of;
 
-    use super::*;
+  #[test]
+  fn test_unpack_initialize() {
+    let nonce = 101;
+    let input = bytes_of(&nonce);
+    let i = Initialize::unpack(input).unwrap();
+    assert_eq!(i.nonce, nonce)
+  }
 
-    #[test]
-    fn test_unpack_dexes_configs() {
-        let r = OneSolInstruction::unpack_dexes_configs(&[0]);
-        assert_eq!(r.is_err(), true);
-        let r = OneSolInstruction::unpack_dexes_configs(&[1]);
-        assert_eq!(r.is_err(), true);
-        let r = OneSolInstruction::unpack_dexes_configs(&[1, 0]);
-        assert_eq!(r.is_err(), true);
-        let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1]);
-        assert_eq!(r.is_err(), true);
-        let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 1]);
-        assert_eq!(r.is_ok(), true);
-        let (v, rest) = r.unwrap();
-        assert_eq!(v, vec![DexConfig::new_dex_config(1, 1, 1)]);
-        assert_ne!(v, vec![DexConfig::new_dex_config(1, 1, 2)]);
-        assert_eq!(rest.len(), 0);
-        // let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 2]);
-        // assert_eq!(r.is_ok(), true);
-        // let (v, rest) = r.unwrap();
-        // assert_eq!(v, vec![(true, 1, 2)]);
-        // assert_eq!(rest.len(), 0);
+  #[test]
+  fn test_unpack_swap_token_swap() {
+    let amount_in = 120000u64;
+    let minimum_amount_out = 1080222u64;
+    let mut input = [0u8; 16];
+    let (amount_in_arr, minimum_amount_out_arr) = mut_array_refs![&mut input, 8, 8];
+    amount_in_arr.copy_from_slice(&bytes_of(&amount_in));
+    minimum_amount_out_arr.copy_from_slice(&bytes_of(&minimum_amount_out));
 
-        // let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 2, 3]);
-        // let (v, rest) = r.unwrap();
-        // assert_eq!(v, vec![(true, 1, 2)]);
-        // assert_eq!(rest.len(), 1);
-        // assert_eq!(rest, &[3]);
-    }
+    let i = SwapTokenSwap::unpack(&input).unwrap();
+    assert_eq!(i.amount_in.get(), amount_in);
+    assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
+  }
+
+  #[test]
+  fn test_unpack_swap_serum_dex() {
+    let amount_in = 120000u64;
+    let side = 1u8;
+    let rate = 120u64;
+    let from_decimals = 6u8;
+    let quote_decimals = 9u8;
+    let strict = 1u8;
+
+    let mut buf = Vec::with_capacity(20);
+    buf.extend_from_slice(&amount_in.to_le_bytes());
+    buf.push(side);
+    buf.extend_from_slice(&rate.to_le_bytes());
+    buf.push(from_decimals);
+    buf.push(quote_decimals);
+    buf.push(strict);
+    let i = SwapSerumDex::unpack(&buf[..]).unwrap();
+    assert_eq!(i.amount_in, amount_in);
+    assert_eq!(i.side, serum_dex::matching::Side::Ask);
+    assert_eq!(i.min_exchange_rate.rate, rate);
+    assert_eq!(i.min_exchange_rate.from_decimals, from_decimals);
+    assert_eq!(i.min_exchange_rate.quote_decimals, quote_decimals);
+    assert_eq!(i.min_exchange_rate.strict, strict == 1);
+  }
 }
