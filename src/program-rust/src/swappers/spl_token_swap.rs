@@ -1,8 +1,3 @@
-use crate::{
-    error::OneSolError,
-    swappers::linear_interpolation,
-    util::{to_u128, to_u64, unpack_token_account},
-};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     instruction::{AccountMeta, Instruction},
@@ -58,52 +53,6 @@ impl SwapInstruction {
         }
         buf
     }
-}
-
-pub fn process_token_swap_calculate_swap(
-    accounts: &[AccountInfo],
-    amount: u64,
-    parts: u64,
-) -> Result<(Vec<u64>, u64), ProgramError> {
-    let (_, acc) = accounts.split_at(4);
-    let account_iters = &mut acc.iter();
-    let swap_info = next_account_info(account_iters)?;
-    next_account_info(account_iters)?;
-    let swap_source_info = next_account_info(account_iters)?;
-    let swap_destination_info = next_account_info(account_iters)?;
-
-    let amounts = linear_interpolation(amount, parts);
-    let mut rets = vec![0; amounts.len()];
-    let token_swap_info = spl_token_swap::state::SwapVersion::unpack(&swap_info.data.borrow())?;
-    let source_account =
-        unpack_token_account(&swap_source_info, &token_swap_info.token_program_id())?;
-    let dest_account =
-        unpack_token_account(&swap_destination_info, &token_swap_info.token_program_id())?;
-
-    let trade_direction = if *swap_source_info.key == *token_swap_info.token_a_account() {
-        spl_token_swap::curve::calculator::TradeDirection::AtoB
-    } else {
-        spl_token_swap::curve::calculator::TradeDirection::BtoA
-    };
-
-    let source_amount = source_account.amount;
-    let destination_amount = dest_account.amount;
-
-    for i in 0..amounts.len() {
-        let result = token_swap_info
-            .swap_curve()
-            .swap(
-                to_u128(amounts[i])?,
-                to_u128(source_amount)?,
-                to_u128(destination_amount)?,
-                trade_direction,
-                token_swap_info.fees(),
-            )
-            .ok_or(OneSolError::ZeroTradingTokens)?;
-
-        rets[i] = to_u64(result.destination_amount_swapped)?;
-    }
-    Ok((rets, 0))
 }
 
 pub fn process_token_swap_invoke_swap(

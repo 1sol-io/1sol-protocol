@@ -320,11 +320,11 @@ export class OneSolProtocol{
     userDestination: PublicKey,
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
-    tokenSwap0Info: TokenSwapInfo | null,
-    tokenSwap1Info: TokenSwapInfo | null,
+    tokenSwapInfos: Array<TokenSwapInfo>,
+    ratios: Array<number>,
   ): Promise<TransactionSignature> {
-    if (tokenSwap0Info === null && tokenSwap1Info === null) {
-      throw new Error('tokenSwapInfo and tokenSwap1Info all null');
+    if (tokenSwapInfos.length < 1) {
+      throw new Error('tokenSwapnfos must not be empty');
     }
     return await realSendAndConfirmTransaction(
       'swap',
@@ -338,8 +338,8 @@ export class OneSolProtocol{
           userSource,
           userDestination,
           this.tokenProgramId,
-          tokenSwap0Info,
-          tokenSwap1Info,
+          tokenSwapInfos,
+          ratios,
           this.protocolProgramId,
           amountIn,
           minimumAmountOut,
@@ -359,52 +359,26 @@ export class OneSolProtocol{
     userDestination: PublicKey,
     tokenProgramId: PublicKey,
     // token-swap key begin
-    tokenSwap0Info: TokenSwapInfo | null,
-    tokenSwap1Info: TokenSwapInfo | null,
+    tokenSwapInfos: Array<TokenSwapInfo>,
+    ratios: Array<number>,
     protocolProgramId: PublicKey,
     amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
   ): TransactionInstruction {
 
-    const dataLayout = BufferLayout.struct([
+    const bflStruct = [
       BufferLayout.u8('instruction'),
       Layout.uint64('amountIn'),
       Layout.uint64('minimumAmountOut'),
       BufferLayout.u8('dexesConfig'),
-      BufferLayout.u8('tokenSwap0Flag'),
-      BufferLayout.u8('tokenSwap0AccountsSize'),
-      BufferLayout.u8('tokenSwap1Flag'),
-      BufferLayout.u8('tokenSwap1AccountsSize'),
-    ]);
-
-    let ts0Keys = Array<AccountMeta>();
-    let ts0Flag = 0;
-    if (tokenSwap0Info !== null){
-      ts0Flag = 1;
-      ts0Keys = tokenSwap0Info.toKeys();
+    ];
+    let dexSize = 0;
+    let dataMap = {
+      instruction: 1, // Swap instruction
+      amountIn: new Numberu64(amountIn).toBuffer(),
+      minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
+      dexesConfig: dexSize,
     };
-
-    let ts1Keys = Array<AccountMeta>();
-    let ts1Flag = 0;
-    if (tokenSwap1Info !== null){
-      ts1Flag = 1;
-      ts1Keys = tokenSwap1Info.toKeys();
-    };
-
-    const data = Buffer.alloc(dataLayout.span);
-    dataLayout.encode(
-      {
-        instruction: 1, // Swap instruction
-        amountIn: new Numberu64(amountIn).toBuffer(),
-        minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
-        dexesConfig: 2,
-        tokenSwap0Flag: ts0Flag,
-        tokenSwap0AccountsSize: ts0Keys.length,
-        tokenSwap1Flag: ts1Flag,
-        tokenSwap1AccountsSize: ts1Keys.length,
-      },
-      data,
-    );
 
     const keys = [
       {pubkey: protocolAccount, isSigner: false, isWritable: false},
@@ -415,17 +389,29 @@ export class OneSolProtocol{
       {pubkey: userDestination, isSigner: false, isWritable: true},
       {pubkey: tokenProgramId, isSigner: false, isWritable: false},
     ];
-    for (var k of ts0Keys) {
-      keys.push(
-        k,
-      );
-    };
-    for (var k of ts1Keys) {
-      keys.push(
-        k,
-      );
-    };
-    
+
+    tokenSwapInfos.forEach((element, index) => {
+      dataMap.dexesConfig += 1;
+      bflStruct.concat([
+        BufferLayout.u8('tokenSwap' + index + 'Type'),
+        BufferLayout.u8('tokenSwap' + index + 'AccountsSize'),
+        BufferLayout.u8('tokenSwap' + index + 'Ratio'),
+      ]);
+      const swapKeys = element.toKeys();
+      dataMap = {...dataMap,
+        ['tokenSwap' + index + 'Type']: 0,
+        ['tokenSwap' + index + 'AccountsSize']: swapKeys.length,
+        ['tokenSwap' + index + 'Ratio']: ratios[index],
+      };
+      swapKeys.forEach(k => {
+        keys.push(k)
+      });
+    });
+
+    const dataLayout = BufferLayout.struct(bflStruct);
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.endCode(dataMap, data);
+
     return new TransactionInstruction({
       keys,
       programId: protocolProgramId,

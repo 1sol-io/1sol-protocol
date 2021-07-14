@@ -291,8 +291,8 @@ export async function swap(): Promise<void> {
     userAccountB,
     SWAP_AMOUNT_IN,
     SWAP_AMOUNT_OUT,
-    tokenSwapInfo,
-    null,
+    [tokenSwapInfo],
+    [100],
   );
 
   await sleep(500);

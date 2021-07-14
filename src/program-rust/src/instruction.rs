@@ -19,11 +19,23 @@ pub struct Swap {
     /// Minimum amount of DESTINATION token to output, prevents excessive slippage
     pub minimum_amount_out: u64,
     /// dexes configs
-    pub dex_configs: [(bool, usize); 2],
+    pub dex_configs: Vec<DexConfig>,
     // /// supportTokenSwap
     // pub token_swap_config: (bool, usize),
     // /// second token swap config
     // pub token_swap_2_config: (bool, usize),
+}
+
+/// DexConfig
+#[derive(Clone, Debug, PartialEq)]
+pub struct DexConfig {
+    /// dex_type is dex type:
+    ///     0: spl_token_swap
+    pub dex_type: u8,
+    /// account_size: the size of accountInfos
+    pub account_size: usize,
+    /// ratio: the ratio of exchange
+    pub ratio: u8,
 }
 
 /// Instructions supported by the 1sol constracts program
@@ -70,23 +82,15 @@ impl OneSolInstruction {
             1 => {
                 let (amount_in, _rest) = Self::unpack_u64(rest)?;
                 let (minimum_amount_out, _rest) = Self::unpack_u64(_rest)?;
-                let (_dexes_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
+                let (dex_configs, _rest) = Self::unpack_dexes_configs(_rest)?;
 
-                if _dexes_configs.len() != 2 {
+                if dex_configs.len() == 0 {
                     return Err(OneSolError::InvalidInstruction.into());
                 }
-                // let token_swap_config = dexes_configs[0];
-                // let token_swap_2_config = dexes_configs[1];
-                // let token_swap_config = (true, true);
-                let dex_configs = [_dexes_configs[0], _dexes_configs[1]];
-
-                // let (&support_token_swap, _rest) = _rest.split_first().ok_or(OneSolError::InvalidInput)?;
                 Self::Swap(Swap {
                     amount_in,
                     minimum_amount_out,
                     dex_configs,
-                    // token_swap_config,
-                    // token_swap_2_config,
                 })
             }
             _ => return Err(OneSolError::InvalidInstruction.into()),
@@ -107,17 +111,19 @@ impl OneSolInstruction {
         }
     }
 
-    fn unpack_dexes_configs(input: &[u8]) -> Result<(Vec<(bool, usize)>, &[u8]), ProgramError> {
+    /// dexes_configs
+    /// u8: size, [u8: dex_type, u8: account_size, u8: ratio]
+    fn unpack_dexes_configs(input: &[u8]) -> Result<(Vec<DexConfig>, &[u8]), ProgramError> {
         let (&dexes_config_size, _rest) = input.split_first().ok_or(OneSolError::InvalidInput)?;
         if dexes_config_size < 1 {
             return Err(OneSolError::InvalidInput.into());
         }
-        let dexes_config_real_size = (dexes_config_size * 2) as usize;
+        let dexes_config_real_size = (dexes_config_size * 3) as usize;
         if _rest.len() < dexes_config_real_size {
             return Err(OneSolError::InvalidInput.into());
         }
         let (dexes_configs, _rest) = _rest.split_at(dexes_config_real_size);
-        let mut dexes_iter = dexes_configs.chunks(2);
+        let mut dexes_iter = dexes_configs.chunks(3);
         let mut result = vec![];
         loop {
             let next = dexes_iter.next();
@@ -125,9 +131,24 @@ impl OneSolInstruction {
                 break;
             }
             let r = next.unwrap();
-            result.push((r[0] != 0, r[1] as usize));
+            result.push(DexConfig {
+                dex_type: r[0],
+                account_size: r[1] as usize,
+                ratio: r[2],
+            });
         }
         Ok((result, _rest))
+    }
+}
+
+impl DexConfig {
+    /// new DexConfig struct
+    pub fn new_dex_config(dex_type: u8, account_size: usize, ratio: u8) -> DexConfig {
+        return DexConfig {
+            dex_type,
+            account_size,
+            ratio,
+        };
     }
 }
 
@@ -145,15 +166,23 @@ mod tests {
         let r = OneSolInstruction::unpack_dexes_configs(&[1, 0]);
         assert_eq!(r.is_err(), true);
         let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1]);
+        assert_eq!(r.is_err(), true);
+        let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 1]);
         assert_eq!(r.is_ok(), true);
         let (v, rest) = r.unwrap();
-        assert_eq!(v, vec![(true, 1)]);
+        assert_eq!(v, vec![DexConfig::new_dex_config(1, 1, 1)]);
+        assert_ne!(v, vec![DexConfig::new_dex_config(1, 1, 2)]);
         assert_eq!(rest.len(), 0);
-        let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 2]);
-        assert_eq!(r.is_ok(), true);
-        let (v, rest) = r.unwrap();
-        assert_eq!(v, vec![(true, 1)]);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest, &[2]);
+        // let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 2]);
+        // assert_eq!(r.is_ok(), true);
+        // let (v, rest) = r.unwrap();
+        // assert_eq!(v, vec![(true, 1, 2)]);
+        // assert_eq!(rest.len(), 0);
+
+        // let r = OneSolInstruction::unpack_dexes_configs(&[1, 1, 1, 2, 3]);
+        // let (v, rest) = r.unwrap();
+        // assert_eq!(v, vec![(true, 1, 2)]);
+        // assert_eq!(rest.len(), 1);
+        // assert_eq!(rest, &[3]);
     }
 }
