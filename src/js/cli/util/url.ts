@@ -2,35 +2,37 @@
 // environment. By default, `LIVE=1` will connect to the devnet cluster.
 
 import {clusterApiUrl, Cluster} from '@solana/web3.js';
+import {ONESOL_PROTOCOL_PROGRAM_ID} from '../../src/onesol-protocol';
 import dotenv from 'dotenv';
 
-function chooseCluster(): Cluster | undefined {
+function initEnvConfig(): EnvConfig {
   dotenv.config();
-  console.log("live:" + process.env.LIVE)
-  if (!process.env.LIVE) return;
+  let cluster: Cluster = "devnet";
   switch (process.env.CLUSTER) {
     case 'devnet':
     case 'testnet':
     case 'mainnet-beta': {
-      return process.env.CLUSTER;
+      cluster = process.env.CLUSTER;
     }
   }
-  throw 'Unknown cluster "' + process.env.CLUSTER + '", check the .env file';
+  let url = process.env.RPC_URL || clusterApiUrl(cluster, false);
+  let splTokenSwapProgramId = process.env.TOKEN_SWAP_PROGRAM_ID || "SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8";
+  let serumDexProgramId = process.env.SERUM_DEX_PROGRAM_ID || "DESVgJVGajEgKGXhb6XmqDHGz3VjdgP7rEVESBgxmroY";
+  let onesolProtocolProgramId = process.env.ONESOL_PROTOCOL_PROGRAM_ID || ONESOL_PROTOCOL_PROGRAM_ID.toString();
+  return {
+    url: url,
+    cluster: cluster,
+    splTokenSwapProgramId: splTokenSwapProgramId,
+    serumDexProgramId: serumDexProgramId, 
+    onesolProtocolProgramId: onesolProtocolProgramId, 
+  };
 }
 
-function getTokenSwapProgramId(): string {
-  dotenv.config();
-  return process.env.TOKEN_SWAP_PROGRAM_ID || "SwaPpA9LAaLfeLi3a68M4DjnLqgtticKg6CnyNwgAC8";
+export const envConfig = initEnvConfig();
+interface EnvConfig {
+  url: string
+  cluster: Cluster,
+  splTokenSwapProgramId: string,
+  serumDexProgramId: string,
+  onesolProtocolProgramId: string,
 }
-
-export const cluster = chooseCluster();
-
-export const url =
-  process.env.RPC_URL ||
-  (process.env.LIVE ? clusterApiUrl(cluster, false) : 'http://localhost:8899');
-
-export const urlTls =
-  process.env.RPC_URL ||
-  (process.env.LIVE ? clusterApiUrl(cluster, true) : 'http://localhost:8899');
-
-export const tokenSwapProgramId = getTokenSwapProgramId();

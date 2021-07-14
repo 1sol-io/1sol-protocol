@@ -69,3 +69,5 @@ impl<T> DecodeError<T> for OneSolError {
         "OneSolError"
     }
 }
+
+// type OnesolResult<T> = Result<T, dyn std::error::Error>;

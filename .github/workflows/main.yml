@@ -52,7 +52,7 @@ jobs:
       
       - name: install solana cli
         run: |
-          sh -c "$(curl -sSfL https://release.solana.com/v1.6.10/install)"
+          sh -c "$(curl -sSfL https://release.solana.com/v1.7.8/install)"
           echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
       # Runs a set of commands using the runners shell

@@ -2,9 +2,11 @@ import assert from 'assert';
 import BN from 'bn.js';
 import {Buffer} from 'buffer';
 import * as BufferLayout from 'buffer-layout';
-import type {Connection, Keypair, TransactionSignature} from '@solana/web3.js';
+import type {Connection, TransactionSignature} from '@solana/web3.js';
 import {
+  SYSVAR_RENT_PUBKEY,
   Account,
+  Keypair,
   Signer,
   AccountMeta,
   PublicKey,
@@ -13,12 +15,28 @@ import {
   TransactionInstruction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
-
-import * as Layout from './layout';
+import {
+  Market,
+  OpenOrders,
+} from '@project-serum/serum';
 
 export const ONESOL_PROTOCOL_PROGRAM_ID: PublicKey = new PublicKey(
   '26XgL6X46AHxcMkfDNfnfQHrqZGzYEcTLj9SmAV5dLrV',
 );
+
+/**
+ * Layout for a public key
+ */
+export const publicKeyLayout = (property: string = 'publicKey'): Object => {
+  return BufferLayout.blob(32, property);
+};
+
+/**
+ * Layout for a 64bit unsigned value
+ */
+export const uint64 = (property: string = 'uint64'): Object => {
+  return BufferLayout.blob(8, property);
+};
 
 /**
  * Some amount of tokens
@@ -55,6 +73,7 @@ export class Numberu64 extends BN {
   }
 }
 
+
 export async function loadAccount(
   connection: Connection,
   address: PublicKey,
@@ -75,13 +94,15 @@ export async function loadAccount(
 export const OneSolProtocolLayout = BufferLayout.struct([
   BufferLayout.u8('version'),
   BufferLayout.u8('nonce'),
-  Layout.publicKey('tokenProgramId'),
-  Layout.publicKey('tokenAccount'),
-  Layout.publicKey('mint'),
+  publicKeyLayout('tokenProgramId'),
+  publicKeyLayout('tokenAccount'),
+  publicKeyLayout('mint'),
 ]);
 
 export class TokenSwapInfo {
   constructor(
+    public amountIn: Numberu64,
+    public miniumAmountOut: Numberu64,
     private programId: PublicKey,
     private swapInfo: PublicKey,
     private authority: PublicKey,
@@ -124,6 +145,105 @@ export class TokenSwapInfo {
       return 0
     }
   }
+}
+
+//
+// *. CoinQty = maxBaseQuantity
+// *. PcQty = maxQuoteQuantity
+export class SerumDexMarketInfo {
+  constructor(
+    public programId: PublicKey,
+    public market: Market,
+    public limitPrice: Numberu64,
+    public maxCoinQty: Numberu64,
+    public maxPcQty: Numberu64,
+    public clientId: Numberu64,
+    public openOrderAccountKey?: PublicKey,
+  ) {
+    this.programId = programId;
+    this.market = market;
+    this.limitPrice = limitPrice;
+    this.maxCoinQty = maxCoinQty,
+    this.maxPcQty = maxPcQty,
+    this.clientId = clientId;
+
+    this.openOrderAccountKey = openOrderAccountKey;
+  }
+
+  public static create(market: Market, price: number, size: number, clientId: Numberu64): SerumDexMarketInfo {
+    let limitPrice = market.priceNumberToLots(price);
+    let maxBaseQuantity = market.baseSizeNumberToLots(size);
+    let maxQuoteQuantity = new BN(market.decoded.quoteLotSize.toNumber()).mul(
+      maxBaseQuantity.mul(limitPrice),
+    );
+    console.log("[SerumDexMarketInfo] maxQuoteQuantity: " + maxQuoteQuantity);
+    console.log("[SerumDexMarketInfo] maxBaseQuantity: " + maxBaseQuantity);
+    console.log("[SerumDexMarketInfo] limitPrice: " + limitPrice);
+    return new SerumDexMarketInfo(
+      market.programId,
+      market,
+      new Numberu64(limitPrice.toNumber()),
+      new Numberu64(maxBaseQuantity.toNumber()),
+      new Numberu64(maxQuoteQuantity.toNumber()),
+      clientId,
+    );
+  }
+
+  public side(sourceMint: PublicKey): number {
+    if (this.market.baseMintAddress == sourceMint) {
+      return 0;
+    } 
+    return 1;
+  }
+
+  dataLayout(): Array<any> {
+    return [
+      BufferLayout.u8('serumDexFlag'),
+      BufferLayout.u8('serumDexAccountsSize'),
+      BufferLayout.u8('serumDexSide'),
+      uint64('serumDexPrice'),
+      uint64('serumDexMaxCoinQty'),
+      uint64('serumDexMaxPcQty'),
+      uint64('serumDexClientId'),
+    ];
+  }
+
+  dataMap(sourceMint: PublicKey) {
+    return {
+      serumDexFlag: 1,
+      serumDexAccountsSize: 11,
+      serumDexSide: this.side(sourceMint),
+      serumDexPrice: this.limitPrice.toBuffer(),
+      serumDexMaxCoinQty: this.maxCoinQty.toBuffer(),
+      serumDexMaxPcQty: this.maxPcQty.toBuffer(),
+      serumDexClientId: this.clientId.toBuffer(),
+    }; 
+  }
+
+  async toKeys(): Promise<Array<AccountMeta>>{
+    const vaultSigner = await PublicKey.createProgramAddress(
+      [
+        this.market.address.toBuffer(),
+        this.market.decoded.vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
+      ],
+      this.programId,
+    );
+    const keys = [
+      {pubkey: this.market.publicKey, isSigner: false, isWritable: true},
+      {pubkey: this.openOrderAccountKey, isSigner: false, isWritable: false},
+      {pubkey: this.market.decoded.requestQueue, isSigner: false, isWritable: true},
+      {pubkey: this.market.decoded.eventQueue, isSigner: false, isWritable: true},
+      {pubkey: this.market.bidsAddress, isSigner: false, isWritable: true},
+      {pubkey: this.market.asksAddress, isSigner: false, isWritable: true},
+      {pubkey: this.market.decoded.baseVault, isSigner: false, isWritable: true},
+      {pubkey: this.market.decoded.quoteVault, isSigner: false, isWritable: true},
+      {pubkey: vaultSigner, isSigner: false, isWritable: false},
+      {pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false},
+      {pubkey: this.programId, isSigner: false, isWritable: false},
+    ];
+    return keys;
+  }
+  
 }
 
 /**
@@ -306,111 +426,157 @@ export class OneSolProtocol{
   /**
    * Swap token A for token B
    *
-   * @param userTransferAuthority Account delegated to transfer user's tokens
    * @param userSource User's source token account
    * @param userDestination User's destination token account
    * @param amountIn Amount to transfer from source account
    * @param minimumAmountOut Minimum amount of tokens the user will receive
-   * @param tokenSwap0Info 
-   * @param tokenSwap1Info 
+   * @param TokenSwapInfo  nullable
+   * @param SerumDexMarketInfo nullable
    */
   async swap(
-    userTransferAuthority: Account,
     userSource: PublicKey,
+    sourceMint: PublicKey,
     userDestination: PublicKey,
-    amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
-    tokenSwapInfos: Array<TokenSwapInfo>,
-    ratios: Array<number>,
+    splTokenSwapInfo: TokenSwapInfo | null,
+    serumDexTradeInfo: SerumDexMarketInfo | null,
   ): Promise<TransactionSignature> {
-    if (tokenSwapInfos.length < 1) {
-      throw new Error('tokenSwapnfos must not be empty');
+    if (splTokenSwapInfo === null && serumDexTradeInfo === null) {
+      throw new Error('One of splTokenSwapInfo and serumDexInfo is must not be null');
     }
+    let transaction = new Transaction();
+    const signers: Array<Signer> = [];
+    if (serumDexTradeInfo !== null) {
+      let market = serumDexTradeInfo.market;
+      let orders = await serumDexTradeInfo.market.findOpenOrdersAccountsForOwner(
+        this.connection, this.payer.publicKey
+      );
+      console.log("orders length: " + orders.length);
+      if (orders.length === 0) {
+        let openOrderAccount = new Account(); 
+        transaction.add(await OpenOrders.makeCreateAccountTransaction(
+          this.connection,
+          market.address,
+          this.payer.publicKey,
+          openOrderAccount.publicKey,
+          market.programId
+        ));
+        // console.log("makeCreateAccountTransaction.market: " + market.address);
+        // console.log("makeCreateAccountTransaction.payer: " + this.payer.publicKey);
+        // console.log("makeCreateAccountTransaction.openOrderAccount: " + openOrderAccount.publicKey);
+        // console.log("makeCreateAccountTransaction.programId: " + market.programId);
+        serumDexTradeInfo.openOrderAccountKey = openOrderAccount.publicKey;
+        signers.push(this.payer, openOrderAccount);
+      }
+      // let openOrderAccount = serumDexTradeInfo.data.openOrdersAccount;
+    }
+    transaction.add(
+      await OneSolProtocol.swapInstruction(
+        this.protocolInfo,
+        this.payer.publicKey,
+        this.authority,
+        this.tokenAccountKey,
+        userSource,
+        sourceMint,
+        userDestination,
+        this.tokenProgramId,
+        splTokenSwapInfo,
+        serumDexTradeInfo,
+        this.protocolProgramId,
+        minimumAmountOut,
+      ),
+    )
+    signers.push(this.payer);
+    // console.log("signers length: " + signers.length);
     return await realSendAndConfirmTransaction(
       'swap',
-      this.connection,
-      new Transaction().add(
-        OneSolProtocol.swapInstruction(
-          this.protocolInfo,
-          this.authority,
-          userTransferAuthority.publicKey,
-          this.tokenAccountKey,
-          userSource,
-          userDestination,
-          this.tokenProgramId,
-          tokenSwapInfos,
-          ratios,
-          this.protocolProgramId,
-          amountIn,
-          minimumAmountOut,
-        ),
-      ),
-      this.payer,
-      userTransferAuthority,
-    );
+      this.connection, 
+      transaction,
+      ...signers,
+    )
   }
 
-  static swapInstruction(
+  static async swapInstruction(
     protocolAccount: PublicKey,
+    owner: PublicKey,
     authority: PublicKey,
-    userTransferAuthority: PublicKey,
     protocolToken: PublicKey,
     userSource: PublicKey,
+    sourceMint: PublicKey,
     userDestination: PublicKey,
     tokenProgramId: PublicKey,
-    // token-swap key begin
-    tokenSwapInfos: Array<TokenSwapInfo>,
-    ratios: Array<number>,
+    splTokenSwapInfo: TokenSwapInfo | null,
+    serumDexInfo: SerumDexMarketInfo | null,
     protocolProgramId: PublicKey,
-    amountIn: number | Numberu64,
     minimumAmountOut: number | Numberu64,
-  ): TransactionInstruction {
+  ): Promise<TransactionInstruction> {
 
-    const bflStruct = [
+    const bflStruct: any = [
       BufferLayout.u8('instruction'),
-      Layout.uint64('amountIn'),
-      Layout.uint64('minimumAmountOut'),
-      BufferLayout.u8('dexesConfig'),
+      uint64('minimumAmountOut'),
     ];
-    let dexSize = 0;
-    let dataMap = {
+    // let dataMap: any = {};
+    let dataMap: any = {
       instruction: 1, // Swap instruction
-      amountIn: new Numberu64(amountIn).toBuffer(),
       minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
-      dexesConfig: dexSize,
     };
 
     const keys = [
       {pubkey: protocolAccount, isSigner: false, isWritable: false},
       {pubkey: authority, isSigner: false, isWritable: false},
-      {pubkey: userTransferAuthority, isSigner: true, isWritable: false},
+      {pubkey: owner, isSigner: true, isWritable: false},
       {pubkey: protocolToken, isSigner: false, isWritable: true},
       {pubkey: userSource, isSigner: false, isWritable: true},
       {pubkey: userDestination, isSigner: false, isWritable: true},
       {pubkey: tokenProgramId, isSigner: false, isWritable: false},
     ];
 
-    tokenSwapInfos.forEach((element, index) => {
-      dataMap.dexesConfig += 1;
-      bflStruct.concat([
-        BufferLayout.u8('tokenSwap' + index + 'Type'),
-        BufferLayout.u8('tokenSwap' + index + 'AccountsSize'),
-        BufferLayout.u8('tokenSwap' + index + 'Ratio'),
-      ]);
-      const swapKeys = element.toKeys();
-      dataMap = {...dataMap,
-        ['tokenSwap' + index + 'Type']: 0,
-        ['tokenSwap' + index + 'AccountsSize']: swapKeys.length,
-        ['tokenSwap' + index + 'Ratio']: ratios[index],
+    if (splTokenSwapInfo !== null) {
+      const swapKeys = splTokenSwapInfo.toKeys();
+      keys.push(...swapKeys);
+      bflStruct.push(
+        BufferLayout.u8('splTokenSwapFlag'),
+        BufferLayout.u8('splTokenSwapAccountsSize'),
+        uint64('splTokenSwapAmountIn'),
+        uint64('splTokenSwapMinimumAmountOut'),
+      );
+      dataMap = {
+        ...dataMap,
+        splTokenSwapFlag: 1,
+        splTokenSwapAccountsSize: swapKeys.length,
+        splTokenSwapAmountIn: splTokenSwapInfo.amountIn.toBuffer(),
+        splTokenSwapMinimumAmountOut: splTokenSwapInfo.miniumAmountOut.toBuffer(),
       };
-      swapKeys.forEach(k => {
-        keys.push(k)
-      });
-    });
-
+      
+    } else {
+      bflStruct.push(
+        BufferLayout.u8('splTokenSwapFlag'),
+      ); 
+      dataMap = {
+        ...dataMap,
+        splTokenSwapFlag: 0,
+      }
+    }
+    if (serumDexInfo !== null) {
+      const swapKeys = await serumDexInfo.toKeys();
+      keys.push(...swapKeys);
+      bflStruct.push(...serumDexInfo.dataLayout());
+      dataMap = {
+        ...dataMap,
+        ...serumDexInfo.dataMap(sourceMint),
+      };
+    } else {
+      bflStruct.push(
+        BufferLayout.u8('serumDexFlag'),
+      ); 
+      dataMap = {
+        ...dataMap,
+        serumDexFlag: 0,
+      } 
+    }
     const dataLayout = BufferLayout.struct(bflStruct);
     const data = Buffer.alloc(dataLayout.span);
-    dataLayout.endCode(dataMap, data);
+    dataLayout.encode(dataMap, data);
 
     return new TransactionInstruction({
       keys,
@@ -424,7 +590,7 @@ export function realSendAndConfirmTransaction(
   title: string,
   connection: Connection,
   transaction: Transaction,
-  ...signers: Array<Account>
+  ...signers: Array<Signer>
 ): Promise<TransactionSignature> {
   return sendAndConfirmTransaction(connection, transaction, signers, {
     skipPreflight: false,

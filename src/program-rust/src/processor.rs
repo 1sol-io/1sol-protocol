@@ -2,13 +2,13 @@
 
 use crate::{
     error::OneSolError,
-    instruction::{DexConfig, Initialize, OneSolInstruction, Swap},
+    instruction::{Initialize, OneSolInstruction, SerumDexOrderData, SplTokenSwapData, Swap},
     state::OneSolState,
-    swappers::{token_swap::TokenSwap, Swapper},
+    swappers::{serum_dex_order, spl_token_swap},
     util::unpack_token_account,
 };
-
 use num_traits::FromPrimitive;
+use safe_transmute::to_bytes::transmute_one_to_bytes;
 use solana_program::{
     account_info::{next_account_info, next_account_infos, AccountInfo},
     decode_error::DecodeError,
@@ -20,6 +20,7 @@ use solana_program::{
     program_pack::Pack,
     pubkey::Pubkey,
 };
+use std::convert::identity;
 
 /// Program state handler.
 pub struct Processor {}
@@ -34,16 +35,16 @@ impl Processor {
                 Self::process_initialize(program_id, nonce, accounts)
             }
             OneSolInstruction::Swap(Swap {
-                amount_in,
                 minimum_amount_out,
-                dex_configs,
+                spl_token_swap_data,
+                serum_dex_order_data,
             }) => {
                 msg!("Instruction: Swap");
                 Self::process_swap(
                     program_id,
-                    amount_in,
                     minimum_amount_out,
-                    &dex_configs[..],
+                    spl_token_swap_data,
+                    serum_dex_order_data,
                     accounts,
                 )
             }
@@ -60,9 +61,9 @@ impl Processor {
         let onesol_info = next_account_info(account_info_iter)?;
         let authority_info = next_account_info(account_info_iter)?;
         let token_info = next_account_info(account_info_iter)?;
-        let token_program_info = next_account_info(account_info_iter)?;
+        let spl_token_program_info = next_account_info(account_info_iter)?;
 
-        let token_program_id = *token_program_info.key;
+        let token_program_id = *spl_token_program_info.key;
 
         if *authority_info.key != Self::authority_id(program_id, onesol_info.key, nonce)? {
             return Err(OneSolError::InvalidProgramAddress.into());
@@ -92,23 +93,24 @@ impl Processor {
     /// Processes an [Swap](enum.Instruction.html).
     pub fn process_swap(
         program_id: &Pubkey,
-        amount_in: u64,
         minimum_amount_out: u64,
-        dex_configs: &[DexConfig],
+        spl_token_swap_data: Option<SplTokenSwapData>,
+        serum_dex_order_data: Option<SerumDexOrderData>,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         msg!("start process swap");
-        if amount_in < 1 {
+        if spl_token_swap_data.is_none() && serum_dex_order_data.is_none() {
             return Err(OneSolError::InvalidInput.into());
         }
 
         let account_info_iter = &mut accounts.iter();
         let protocol_account = next_account_info(account_info_iter)?;
         let protocol_authority = next_account_info(account_info_iter)?;
-        let user_transfer_authority_info = next_account_info(account_info_iter)?;
-        let protocol_token_account = next_account_info(account_info_iter)?;
-        let source_info = next_account_info(account_info_iter)?;
-        let destination_info = next_account_info(account_info_iter)?;
+        // let user_transfer_authority_info = next_account_info(account_info_iter)?;
+        let wallet_owner = next_account_info(account_info_iter)?;
+        let protocol_token_acc_info = next_account_info(account_info_iter)?;
+        let source_token_acc_info = next_account_info(account_info_iter)?;
+        let destination_token_acc_info = next_account_info(account_info_iter)?;
         let token_program_info = next_account_info(account_info_iter)?;
 
         if protocol_account.owner != program_id {
@@ -122,87 +124,197 @@ impl Processor {
             return Err(OneSolError::InvalidProgramAddress.into());
         }
 
-        if *destination_info.key == protocol_info.token || *source_info.key == protocol_info.token {
+        if *source_token_acc_info.key == protocol_info.token
+            || *source_token_acc_info.key == protocol_info.token
+        {
             return Err(OneSolError::IncorrectSwapAccount.into());
         }
 
-        if *source_info.key == *destination_info.key {
+        if *source_token_acc_info.key == *destination_token_acc_info.key {
             return Err(OneSolError::InvalidInput.into());
         }
 
         let token_program_id = *token_program_info.key;
 
-        let protocol_token = unpack_token_account(protocol_token_account, &token_program_id)?;
-        let destination_token = unpack_token_account(destination_info, &token_program_id)?;
-        if protocol_token.mint != destination_token.mint {
+        let source_token_account = unpack_token_account(source_token_acc_info, &token_program_id)?;
+        msg!(
+            "source_token_account amount: {}",
+            source_token_account.amount
+        );
+        // this is middle destination token account
+        let protocol_token_account =
+            unpack_token_account(protocol_token_acc_info, &token_program_id)?;
+        let destination_token =
+            unpack_token_account(destination_token_acc_info, &token_program_id)?;
+        if protocol_token_account.mint != destination_token.mint {
             return Err(OneSolError::InvalidInput.into());
         }
 
-        // if *user_transfer_authority_info.key != source_info.delegate {
-        //     return Err(OneSolError::InvalidOwner.into());
-        // }
+        let dest_account1 =
+            spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
+        let amount1 = dest_account1.amount;
+        // msg!("account amount: {}", dest_account1.amount);
 
-        let mut swappers: Vec<TokenSwap> = vec![];
-
-        for dex_config in dex_configs.iter() {
-            #[allow(unused_parens)]
-            if (dex_config.dex_type == 0) {
-                let dex_accounts = next_account_infos(account_info_iter, dex_config.account_size)?;
-                swappers.push(TokenSwap::new_spl_token_swap(
+        if spl_token_swap_data.is_some() {
+            let data = spl_token_swap_data.unwrap();
+            let token_swap_amount_in = data.amount_in;
+            let token_swap_minimum_amount_out = data.minimum_amount_out;
+            if token_swap_amount_in > 0 {
+                msg!(
+                "swap onesolA -> onesolB using token-swap, amount_in: {}, minimum_amount_out: {}",
+                token_swap_amount_in,
+                token_swap_minimum_amount_out,
+                );
+                let mut accounts = vec![
                     token_program_info.clone(),
-                    user_transfer_authority_info.clone(),
-                    source_info.clone(),
-                    protocol_token_account.clone(),
-                    dex_accounts,
-                )?);
+                    wallet_owner.clone(),
+                    source_token_acc_info.clone(),
+                    protocol_token_acc_info.clone(),
+                ];
+                let account_size = data.account_size;
+                let dex_accounts = next_account_infos(account_info_iter, account_size)?;
+                accounts.extend(dex_accounts.iter().cloned());
+                spl_token_swap::process_token_swap_invoke_swap(
+                    &accounts[..],
+                    token_swap_amount_in,
+                    token_swap_minimum_amount_out,
+                )?;
+                let temp_account =
+                    spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
+                msg!("token swap done, account amount: {}", temp_account.amount);
             }
         }
 
-        let dest_account1 =
-            spl_token::state::Account::unpack(&protocol_token_account.data.borrow())?;
-
-        let amount1 = dest_account1.amount;
-
-        // let (best, parts) = if swappers.len() > 1 {
-        //     let _parts = find_best_parts(amount_in, swappers.len() as u64);
-        //     msg!("best parts: {}", _parts);
-        //     sol_log_compute_units();
-        //     let _best = Self::get_expected_return_with_gas(amount_in, _parts, &swappers[..]);
-        //     sol_log_compute_units();
-        //     msg!("Best split is {:?}", _best);
-        //     (_best, _parts)
-        // } else {
-        //     (vec![1], 1)
-        // };
-
-        // let mut best_index: usize = 0;
-        for i in 0..swappers.len() {
-            let ratio = dex_configs[i].ratio as u64;
-            let token_swap_amount_in = amount_in * ratio;
-            let token_swap_minimum_amount_out = minimum_amount_out * ratio;
-            // best_index += 1;
-            if token_swap_amount_in <= 0 {
-                continue;
-            }
+        if serum_dex_order_data.is_some() {
+            let data = serum_dex_order_data.unwrap();
+            let account_size = data.account_size;
+            let source_token_account2 =
+                unpack_token_account(source_token_acc_info, &token_program_id)?;
             msg!(
-                "swap onesolA -> onesolB using token-swap[{}], amount_in: {}, minimum_amount_out: {}",
-                i,
-                token_swap_amount_in,
-                token_swap_minimum_amount_out,
+                "serum_dex trade, max_coin_qty: {}, max_pc_qty: {}, account_size: {}, source_token_account_amount: {}",
+                data.max_coin_qty,
+                data.max_native_pc_qty_including_fees,
+                account_size,
+                source_token_account2.amount,
             );
-            swappers[i].invoke_swap(token_swap_amount_in, token_swap_minimum_amount_out)?;
+            if account_size < 11 {
+                return Err(OneSolError::InvalidInput.into());
+            }
+            let dex_accounts = next_account_infos(account_info_iter, account_size)?;
+            let dex_account_info_iter = &mut dex_accounts.iter();
+            let market_acc_info = next_account_info(dex_account_info_iter)?;
+
+            let open_orders_acc_info = next_account_info(dex_account_info_iter)?;
+            // 这个 owner 跟上面可能会有重复
+            // let open_orders_account_owner_acc_info = next_account_info(dex_account_info_iter)?;
+
+            let request_queue_acc_info = next_account_info(dex_account_info_iter)?;
+            let evnet_queue_acc_info = next_account_info(dex_account_info_iter)?;
+            let market_bids_acc_info = next_account_info(dex_account_info_iter)?;
+            let market_asks_acc_info = next_account_info(dex_account_info_iter)?;
+
+            /*
+            new_order:
+                source -> coin_vault
+            settle_funds:
+                coin_vault  -> source
+                pc_vault    -> pc_wallet
+            */
+            // it's spl_token::state::Account
+            let coin_vault_acc_info = next_account_info(dex_account_info_iter)?;
+            // it's spl_token::state::Account
+            let pc_vault_acc_info = next_account_info(dex_account_info_iter)?;
+
+            let vault_signer_acc_info = next_account_info(dex_account_info_iter)?;
+
+            let rend_sysvar_acc_info = next_account_info(dex_account_info_iter)?;
+            let serum_dex_program_info = next_account_info(dex_account_info_iter)?;
+
+            let serum_dex_program_id = *serum_dex_program_info.key;
+
+            let market_acc_clone = market_acc_info.clone();
+            let market = serum_dex_order::load_market_state(&market_acc_clone)?;
+            let coin_mint = Pubkey::new(transmute_one_to_bytes(&identity(market.coin_mint)));
+            // // let pc_vault = Pubkey::new(transmute_one_to_bytes(&identity(market.pc_vault)));
+
+            let side = if coin_mint == source_token_account.mint {
+                serum_dex::matching::Side::Ask
+            } else {
+                serum_dex::matching::Side::Bid
+            };
+
+            msg!(
+                "[SerumDex] side: {:?}, market: {}",
+                side,
+                market_acc_info.key
+            );
+            // msg!("[SerumDex] market, coin_vault: {:?}, pc_vault: {:?}", market.coin_vault, market.pc_vault);
+            // market.check_coin_vault(vault: account_parser::TokenAccount)
+
+            let new_order_accounts = vec![
+                market_acc_info.clone(),
+                open_orders_acc_info.clone(),
+                request_queue_acc_info.clone(),
+                evnet_queue_acc_info.clone(),
+                market_bids_acc_info.clone(),
+                market_asks_acc_info.clone(),
+                source_token_acc_info.clone(),
+                wallet_owner.clone(),
+                coin_vault_acc_info.clone(),
+                pc_vault_acc_info.clone(),
+                token_program_info.clone(),
+                rend_sysvar_acc_info.clone(),
+            ];
+
+            // let size =  / u64::from(data.limit_price);
+
+            // msg!("[SerumDex] limit_price: {}, size: {}", data.limit_price, size);
+
+            serum_dex_order::invoke_new_order(
+                &new_order_accounts[..],
+                &serum_dex_program_id,
+                side,
+                data.limit_price,
+                data.max_coin_qty,
+                data.client_order_id,
+                data.self_trade_behavior,
+                65535,
+                data.max_native_pc_qty_including_fees,
+            )?;
+
+            msg!("[SerumDex] invoke settle funds");
+            // TODO settle_funds
+            serum_dex_order::invoke_settle_funds(
+                market_acc_info.clone(),
+                token_program_info.clone(),
+                open_orders_acc_info.clone(),
+                wallet_owner.clone(),
+                coin_vault_acc_info.clone(),
+                source_token_acc_info.clone(),
+                pc_vault_acc_info.clone(),
+                protocol_token_acc_info.clone(),
+                vault_signer_acc_info.clone(),
+                &serum_dex_program_id,
+            )?;
+            let temp_account =
+                spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
+            msg!(
+                "serumdex order settle done, account amount: {}",
+                temp_account.amount
+            );
         }
 
         let dest_account =
-            spl_token::state::Account::unpack(&protocol_token_account.data.borrow())?;
+            spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
         let result_amount = dest_account.amount - amount1;
 
         // TODO 计算手续费
-        // msg!(
-        //     "onesol_destination amount: {}, should tranfer: {}",
-        //     dest_account.amount,
-        //     result_amount,
-        // );
+        msg!(
+            "onesol_destination amount: {}, should tranfer: {}, minimum: {}",
+            dest_account.amount,
+            result_amount,
+            minimum_amount_out,
+        );
         if result_amount < minimum_amount_out {
             return Err(OneSolError::ExceededSlippage.into());
         }
@@ -212,8 +324,8 @@ impl Processor {
         Self::token_transfer(
             protocol_account.key,
             token_program_info.clone(),
-            protocol_token_account.clone(),
-            destination_info.clone(),
+            protocol_token_acc_info.clone(),
+            destination_token_acc_info.clone(),
             protocol_authority.clone(),
             protocol_info.nonce,
             result_amount,
