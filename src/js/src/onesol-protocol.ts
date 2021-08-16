@@ -2,7 +2,7 @@ import assert from 'assert';
 import BN from 'bn.js';
 import {Buffer} from 'buffer';
 import * as BufferLayout from 'buffer-layout';
-import type {Connection, TransactionSignature} from '@solana/web3.js';
+import type {Connection, InstructionType, TransactionSignature} from '@solana/web3.js';
 import {
   SYSVAR_RENT_PUBKEY,
   Account,
@@ -449,18 +449,20 @@ export class OneSolProtocol{
       throw new Error('One of splTokenSwapInfo and serumDexInfo is must not be null');
     }
     let transaction = new Transaction();
+    let instructions = new Array<TransactionInstruction>();
     const signers: Array<Signer> = [];
-    let ins = await this.createSwapInstruction(
+    await this.createSwapInstruction(
       userSource,
       sourceMint,
       userDestination,
       minimumAmountOut,
       splTokenSwapInfo,
       serumDexTradeInfo,
+      instructions,
       signers,
     )
     transaction.add(
-      ins,
+      ...instructions,
     )
     signers.push(payer);
     // console.log("signers length: " + signers.length);
@@ -480,12 +482,12 @@ export class OneSolProtocol{
     minimumAmountOut: number | Numberu64,
     splTokenSwapInfo: TokenSwapInfo | null,
     serumDexTradeInfo: SerumDexMarketInfo | null,
+    instructions: Array<TransactionInstruction>,
     signers: Array<Signer>,
-  ): Promise<TransactionInstruction> {
+  ): Promise<void> {
     if (splTokenSwapInfo === null && serumDexTradeInfo === null) {
       throw new Error('One of splTokenSwapInfo and serumDexInfo is must not be null');
     }
-    let transaction = new Transaction();
     if (serumDexTradeInfo !== null) {
       let market = serumDexTradeInfo.market;
       let orders = await serumDexTradeInfo.market.findOpenOrdersAccountsForOwner(
@@ -494,7 +496,7 @@ export class OneSolProtocol{
       console.log("orders length: " + orders.length);
       if (orders.length === 0) {
         let openOrderAccount = new Account(); 
-        transaction.add(await OpenOrders.makeCreateAccountTransaction(
+        instructions.push(await OpenOrders.makeCreateAccountTransaction(
           this.connection,
           market.address,
           this.wallet,
@@ -510,7 +512,7 @@ export class OneSolProtocol{
       }
       // let openOrderAccount = serumDexTradeInfo.data.openOrdersAccount;
     }
-    return await OneSolProtocol.swapInstruction(
+    instructions.push(await OneSolProtocol.swapInstruction(
         this.protocolInfo,
         this.wallet,
         this.authority,
@@ -523,7 +525,7 @@ export class OneSolProtocol{
         serumDexTradeInfo,
         this.protocolProgramId,
         minimumAmountOut,
-      )
+    ))
   }
 
   static async swapInstruction(
