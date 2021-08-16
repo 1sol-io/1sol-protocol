@@ -382,7 +382,7 @@ export async function createOneSolProtocol(): Promise<void> {
     TOKEN_PROGRAM_ID,
     authority,
     nonce,
-    basePayer,
+    Keypair.fromSecretKey(basePayer.secretKey),
     onesolProtocolProgramId, 
   );
   console.log("[OnesolProtocol] OneSolProtocol account created");
@@ -390,7 +390,7 @@ export async function createOneSolProtocol(): Promise<void> {
     connection,
     onesolProtocolAccount.publicKey, 
     onesolProtocolProgramId,
-    basePayer,
+    basePayer.publicKey,
   );
   assert(fetchedAccount.tokenProgramId.equals(TOKEN_PROGRAM_ID));
   assert(fetchedAccount.tokenAccountKey.equals(tokenBAccount));
@@ -422,7 +422,7 @@ export async function swap(): Promise<void> {
     connection,
     onesolProtocolAccount.publicKey, 
     onesolProtocolProgramId,
-    alice,
+    alice.publicKey,
   );
 
 
@@ -488,6 +488,7 @@ export async function swap(): Promise<void> {
     SWAP_AMOUNT_OUT,
     tokenSwapInfo,
     serumTradeInfo,
+    Keypair.fromSecretKey(basePayer.secretKey),
   );
 
   await sleep(500);

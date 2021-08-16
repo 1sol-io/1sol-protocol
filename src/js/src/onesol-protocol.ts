@@ -269,7 +269,7 @@ export class OneSolProtocol{
     public tokenAccountKey: PublicKey,
     public authority: PublicKey,
     public nonce: number,
-    public payer: Account,
+    public wallet: PublicKey,
   ) {
     this.connection = connection;
     this.protocolInfo = protocolInfo;
@@ -277,14 +277,14 @@ export class OneSolProtocol{
     this.tokenProgramId = tokenProgramId;
     this.tokenAccountKey = tokenAccountKey;
     this.nonce = nonce;
-    this.payer = payer;
+    this.wallet = wallet;
   }
 
   static async loadOneSolProtocol(
     connection: Connection,
     address: PublicKey,
     programId: PublicKey,
-    payer: Account,
+    wallet: PublicKey,
   ): Promise<OneSolProtocol> {
     const data = await loadAccount(connection, address, programId);
     const onesolProtocolData = OneSolProtocolLayout.decode(data);
@@ -304,7 +304,7 @@ export class OneSolProtocol{
       new PublicKey(onesolProtocolData.tokenAccount),
       authority,
       onesolProtocolData.nonce,
-      payer,
+      wallet,
     )
 
   }
@@ -329,7 +329,7 @@ export class OneSolProtocol{
     tokenProgramId: PublicKey,
     authority: PublicKey,
     nonce: number, 
-    payer: Account,
+    payer: Keypair,
     protocolProgramId: PublicKey,
   ): Promise<OneSolProtocol> {
     // let transaction;
@@ -341,7 +341,7 @@ export class OneSolProtocol{
       tokenAccountKey,
       authority,
       nonce,
-      payer,
+      payer.publicKey,
     );
 
     // Allocate memory for the account
@@ -443,6 +443,7 @@ export class OneSolProtocol{
     minimumAmountOut: number | Numberu64,
     splTokenSwapInfo: TokenSwapInfo | null,
     serumDexTradeInfo: SerumDexMarketInfo | null,
+    payer: Keypair,
   ): Promise<TransactionSignature> {
     if (splTokenSwapInfo === null && serumDexTradeInfo === null) {
       throw new Error('One of splTokenSwapInfo and serumDexInfo is must not be null');
@@ -461,7 +462,7 @@ export class OneSolProtocol{
     transaction.add(
       ins,
     )
-    signers.push(this.payer);
+    signers.push(payer);
     // console.log("signers length: " + signers.length);
     return await realSendAndConfirmTransaction(
       'swap',
@@ -488,7 +489,7 @@ export class OneSolProtocol{
     if (serumDexTradeInfo !== null) {
       let market = serumDexTradeInfo.market;
       let orders = await serumDexTradeInfo.market.findOpenOrdersAccountsForOwner(
-        this.connection, this.payer.publicKey
+        this.connection, this.wallet
       );
       console.log("orders length: " + orders.length);
       if (orders.length === 0) {
@@ -496,7 +497,7 @@ export class OneSolProtocol{
         transaction.add(await OpenOrders.makeCreateAccountTransaction(
           this.connection,
           market.address,
-          this.payer.publicKey,
+          this.wallet,
           openOrderAccount.publicKey,
           market.programId
         ));
@@ -505,13 +506,13 @@ export class OneSolProtocol{
         // console.log("makeCreateAccountTransaction.openOrderAccount: " + openOrderAccount.publicKey);
         // console.log("makeCreateAccountTransaction.programId: " + market.programId);
         serumDexTradeInfo.openOrderAccountKey = openOrderAccount.publicKey;
-        signers.push(this.payer, openOrderAccount);
+        signers.push(openOrderAccount);
       }
       // let openOrderAccount = serumDexTradeInfo.data.openOrdersAccount;
     }
     return await OneSolProtocol.swapInstruction(
         this.protocolInfo,
-        this.payer.publicKey,
+        this.wallet,
         this.authority,
         this.tokenAccountKey,
         userSource,
@@ -686,7 +687,7 @@ export async function getOneSolProtocol(
   connection: Connection,
   address: PublicKey,
   programId: PublicKey,
-  payer: Account
+  wallet: PublicKey 
 ): Promise<OneSolProtocol> {
   if (onesolProtocolData.version !== 1) {
     throw new Error(`Invalid OneSolProtocol data`);
@@ -705,6 +706,6 @@ export async function getOneSolProtocol(
     new PublicKey(onesolProtocolData.tokenAccount),
     authority,
     onesolProtocolData.nonce,
-    payer,
+    wallet,
   )
 }
