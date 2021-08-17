@@ -144,8 +144,16 @@ impl Processor {
         // this is middle destination token account
         let protocol_token_account =
             unpack_token_account(protocol_token_acc_info, &token_program_id)?;
+        msg!(
+            "protocol_token_account amount: {}",
+            protocol_token_account.amount
+            );
         let destination_token =
             unpack_token_account(destination_token_acc_info, &token_program_id)?;
+        msg!(
+            "destination_token amount: {}",
+            destination_token.amount
+        );
         if protocol_token_account.mint != destination_token.mint {
             return Err(OneSolError::InvalidInput.into());
         }

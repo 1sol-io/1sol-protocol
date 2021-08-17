@@ -5,6 +5,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use crate::util::unpack_token_account;
 use std::mem::size_of;
 
 /// Swap instruction data
@@ -68,16 +69,26 @@ pub fn process_token_swap_invoke_swap(
     let account_iters = &mut accounts.iter();
     let token_program_info = next_account_info(account_iters)?;
     let user_transfer_authority_info = next_account_info(account_iters)?;
-    let middle_source_info = next_account_info(account_iters)?;
-    let middle_destination_info = next_account_info(account_iters)?;
+    let source_token_acc_info = next_account_info(account_iters)?;
+    let destination_token_acc_info = next_account_info(account_iters)?;
     let swap_info = next_account_info(account_iters)?;
     let swap_authority_info = next_account_info(account_iters)?;
-    let swap_source_info = next_account_info(account_iters)?;
-    let swap_destination_info = next_account_info(account_iters)?;
+    let swap_temp_source_token_acc_info = next_account_info(account_iters)?;
+    let swap_temp_destination_token_acc_info = next_account_info(account_iters)?;
     let pool_mint_info = next_account_info(account_iters)?;
     let pool_fee_account_info = next_account_info(account_iters)?;
     let token_swap_program_info = next_account_info(account_iters)?;
     let host_fee_account_info = next_account_info(account_iters);
+
+    let token_program_id = *token_program_info.key;
+    let source_token_acc = unpack_token_account(source_token_acc_info, &token_program_id)?;
+    let swap_source_acc = unpack_token_account(swap_temp_source_token_acc_info, &token_program_id)?;
+
+    let (pool_source_token_acc_info, pool_destination_token_acc_info) = if source_token_acc.mint == swap_source_acc.mint {
+        (swap_temp_source_token_acc_info, swap_temp_destination_token_acc_info)
+    } else {
+        (swap_temp_destination_token_acc_info, swap_temp_source_token_acc_info)
+    };
 
     let mut accounts = vec![
         token_swap_program_info.clone(),
@@ -85,10 +96,10 @@ pub fn process_token_swap_invoke_swap(
         swap_info.clone(),
         swap_authority_info.clone(),
         user_transfer_authority_info.clone(),
-        middle_source_info.clone(),
-        swap_source_info.clone(),
-        swap_destination_info.clone(),
-        middle_destination_info.clone(),
+        source_token_acc_info.clone(),
+        pool_source_token_acc_info.clone(),
+        pool_destination_token_acc_info.clone(),
+        destination_token_acc_info.clone(),
         pool_mint_info.clone(),
         pool_fee_account_info.clone(),
     ];
@@ -106,10 +117,10 @@ pub fn process_token_swap_invoke_swap(
         swap_info.key,
         swap_authority_info.key,
         user_transfer_authority_info.key,
-        middle_source_info.key,
-        swap_source_info.key,
-        swap_destination_info.key,
-        middle_destination_info.key,
+        source_token_acc_info.key,
+        pool_source_token_acc_info.key,
+        pool_destination_token_acc_info.key,
+        destination_token_acc_info.key,
         pool_mint_info.key,
         pool_fee_account_info.key,
         host_fee_account_key,
