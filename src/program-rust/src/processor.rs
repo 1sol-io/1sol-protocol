@@ -8,7 +8,7 @@ use crate::{
     util::unpack_token_account,
 };
 use num_traits::FromPrimitive;
-use safe_transmute::to_bytes::transmute_one_to_bytes;
+// use safe_transmute::to_bytes::transmute_one_to_bytes;
 use solana_program::{
     account_info::{next_account_info, next_account_infos, AccountInfo},
     decode_error::DecodeError,
@@ -20,7 +20,7 @@ use solana_program::{
     program_pack::Pack,
     pubkey::Pubkey,
 };
-use std::convert::identity;
+// use std::convert::identity;
 
 /// Program state handler.
 pub struct Processor {}
@@ -199,11 +199,13 @@ impl Processor {
             let source_token_account2 =
                 unpack_token_account(source_token_acc_info, &token_program_id)?;
             msg!(
-                "serum_dex trade, max_coin_qty: {}, max_pc_qty: {}, account_size: {}, source_token_account_amount: {}",
+                "serum_dex trade, limit_price: {}, max_coin_qty: {}, max_pc_qty: {}, account_size: {}, source_token_account_amount: {}, side: {:?}",
+                data.limit_price,
                 data.max_coin_qty,
                 data.max_native_pc_qty_including_fees,
                 account_size,
                 source_token_account2.amount,
+                data.side,
             );
             if account_size < 11 {
                 return Err(OneSolError::InvalidInput.into());
@@ -217,7 +219,7 @@ impl Processor {
             // let open_orders_account_owner_acc_info = next_account_info(dex_account_info_iter)?;
 
             let request_queue_acc_info = next_account_info(dex_account_info_iter)?;
-            let evnet_queue_acc_info = next_account_info(dex_account_info_iter)?;
+            let event_queue_acc_info = next_account_info(dex_account_info_iter)?;
             let market_bids_acc_info = next_account_info(dex_account_info_iter)?;
             let market_asks_acc_info = next_account_info(dex_account_info_iter)?;
 
@@ -240,20 +242,20 @@ impl Processor {
 
             let serum_dex_program_id = *serum_dex_program_info.key;
 
-            let market_acc_clone = market_acc_info.clone();
-            let market = serum_dex_order::load_market_state(&market_acc_clone)?;
-            let coin_mint = Pubkey::new(transmute_one_to_bytes(&identity(market.coin_mint)));
+            // let market_acc_clone = market_acc_info.clone();
+            // let market = serum_dex_order::load_market_state(&market_acc_clone)?;
+            // let coin_mint = Pubkey::new(transmute_one_to_bytes(&identity(market.coin_mint)));
             // // let pc_vault = Pubkey::new(transmute_one_to_bytes(&identity(market.pc_vault)));
 
-            let side = if coin_mint == source_token_account.mint {
-                serum_dex::matching::Side::Ask
-            } else {
-                serum_dex::matching::Side::Bid
-            };
+            // let side = if coin_mint == source_token_account.mint {
+            //     serum_dex::matching::Side::Ask
+            // } else {
+            //     serum_dex::matching::Side::Bid
+            // };
 
             msg!(
                 "[SerumDex] side: {:?}, market: {}",
-                side,
+                data.side,
                 market_acc_info.key
             );
             // msg!("[SerumDex] market, coin_vault: {:?}, pc_vault: {:?}", market.coin_vault, market.pc_vault);
@@ -263,7 +265,7 @@ impl Processor {
                 market_acc_info.clone(),
                 open_orders_acc_info.clone(),
                 request_queue_acc_info.clone(),
-                evnet_queue_acc_info.clone(),
+                event_queue_acc_info.clone(),
                 market_bids_acc_info.clone(),
                 market_asks_acc_info.clone(),
                 source_token_acc_info.clone(),
@@ -276,12 +278,12 @@ impl Processor {
 
             // let size =  / u64::from(data.limit_price);
 
-            // msg!("[SerumDex] limit_price: {}, size: {}", data.limit_price, size);
+            msg!("[SerumDex] invoke new order");
 
             serum_dex_order::invoke_new_order(
                 &new_order_accounts[..],
                 &serum_dex_program_id,
-                side,
+                data.side,
                 data.limit_price,
                 data.max_coin_qty,
                 data.client_order_id,

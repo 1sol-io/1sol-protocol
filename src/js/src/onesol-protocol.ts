@@ -193,7 +193,7 @@ export class SerumDexMarketInfo {
   }
 
   public side(sourceMint: PublicKey): number {
-    if (this.market.baseMintAddress == sourceMint) {
+    if (this.market.baseMintAddress.equals(sourceMint)) {
       return 0;
     } 
     return 1;
