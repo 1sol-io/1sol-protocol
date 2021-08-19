@@ -5,6 +5,7 @@ use serum_dex::{
     instruction::{
         new_order as serum_dex_new_order,
         settle_funds as serum_dex_settle_funds,
+        cancel_order_by_client_order_id as serum_dex_cancel_order,
         // consume_events as serum_dex_consume_events,
         SelfTradeBehavior,
     },
@@ -14,12 +15,13 @@ use serum_dex::{
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program::invoke,
     pubkey::Pubkey,
 };
 use std::num::NonZeroU64;
 
-pub fn invoke_new_order<'a>(
+pub fn invoke_new_order(
     accounts: &[AccountInfo],
     program_id: &Pubkey,
     side: Side,
@@ -98,7 +100,7 @@ pub fn invoke_settle_funds<'a>(
     vault_signer_account: AccountInfo<'a>,
     program_id: &Pubkey,
 ) -> ProgramResult {
-    solana_program::msg!("[SerumDex] settle funds tx");
+    msg!("[SerumDex] settle funds tx");
     let tx = serum_dex_settle_funds(
         program_id,
         market_account.key,
@@ -112,7 +114,7 @@ pub fn invoke_settle_funds<'a>(
         Some(pc_wallet_account.key),
         vault_signer_account.key,
     )?;
-    solana_program::msg!("[SerumDex] settle funds accounts");
+    msg!("[SerumDex] settle funds accounts");
     let account_infos = vec![
         market_account.clone(),
         open_orders_account.clone(),
@@ -125,7 +127,44 @@ pub fn invoke_settle_funds<'a>(
         spl_token_program_account.clone(),
         pc_wallet_account.clone(),
     ];
-    solana_program::msg!("[SerumDex] settle fund invoke");
+    msg!("[SerumDex] settle fund invoke");
+    invoke(&tx, &account_infos[..])
+}
+
+pub fn invoke_cancel_order(
+    accounts: &[AccountInfo],
+    program_id: &Pubkey,
+    client_order_id: u64,
+) -> ProgramResult {
+    msg!("[SerumDex] cancel order");
+    let account_iters = &mut accounts.iter();
+    let market_acc = next_account_info(account_iters)?;
+    let market_bids_acc = next_account_info(account_iters)?;
+    let market_asks_acc = next_account_info(account_iters)?;
+    let open_orders_acc = next_account_info(account_iters)?;
+    let open_orders_acc_owner = next_account_info(account_iters)?;
+    let event_queue_acc = next_account_info(account_iters)?;
+
+    let tx = serum_dex_cancel_order(
+        program_id,
+        market_acc.key,
+        market_bids_acc.key,
+        market_asks_acc.key,
+        open_orders_acc.key,
+        open_orders_acc_owner.key,
+        event_queue_acc.key,
+        client_order_id, 
+    )?;
+
+    let account_infos = vec![
+        market_acc.clone(),
+        market_bids_acc.clone(),
+        market_asks_acc.clone(),
+        open_orders_acc.clone(),
+        open_orders_acc_owner.clone(),
+        event_queue_acc.clone(),
+    ];
+
     invoke(&tx, &account_infos[..])
 }
 
@@ -149,6 +188,7 @@ pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSol
     Ok(*market_state)
 }
 
+
 // fn check_account_padding(data: &[u8]) -> Result<&[[u8; 8]], OneSolError> {
 //     if data.len() < 12 {
 //         return Err(OneSolError::InvalidInput);
@@ -163,15 +203,3 @@ pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSol
 //     Ok(try_cast_slice(data).map_err(|_| OneSolError::InvalidInput)?)
 // }
 
-// fn invoke_consume_events() -> ProgramResult {
-// 	serum_dex_consume_events(
-// 		// program_id: &Pubkey,
-// 		// open_orders_accounts: Vec<&Pubkey>,
-// 		// market: &Pubkey,
-// 		// event_queue: &Pubkey,
-// 		// coin_fee_receivable_account: &Pubkey,
-// 		// pc_fee_receivable_account: &Pubkey,
-// 		// limit: u16,
-// 	)
-// 	Ok(())
-// }

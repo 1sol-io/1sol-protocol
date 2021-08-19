@@ -292,8 +292,9 @@ impl Processor {
                 data.max_native_pc_qty_including_fees,
             )?;
 
+            // TODO check order coin and pc
+
             msg!("[SerumDex] invoke settle funds");
-            // TODO settle_funds
             serum_dex_order::invoke_settle_funds(
                 market_acc_info.clone(),
                 token_program_info.clone(),
@@ -306,6 +307,7 @@ impl Processor {
                 vault_signer_acc_info.clone(),
                 &serum_dex_program_id,
             )?;
+            // TODO cancel_order ?
             let temp_account =
                 spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
             msg!(
@@ -320,7 +322,7 @@ impl Processor {
 
         // TODO 计算手续费
         msg!(
-            "onesol_destination amount: {}, should tranfer: {}, minimum: {}",
+            "onesol_destination amount: {}, should transfer: {}, minimum: {}",
             dest_account.amount,
             result_amount,
             minimum_amount_out,
