@@ -159,7 +159,7 @@ impl Processor {
         }
 
         let dest_account1 =
-            spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
+            unpack_token_account(protocol_token_acc_info, &token_program_id)?;
         let amount1 = dest_account1.amount;
         // msg!("account amount: {}", dest_account1.amount);
 
@@ -188,7 +188,7 @@ impl Processor {
                     token_swap_minimum_amount_out,
                 )?;
                 let temp_account =
-                    spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
+                    unpack_token_account(protocol_token_acc_info, &token_program_id)?;
                 msg!("token swap done, account amount: {}", temp_account.amount);
             }
         }
@@ -293,20 +293,36 @@ impl Processor {
             )?;
 
             // TODO check order coin and pc
-
+            let coin_vault_token_account = unpack_token_account(coin_vault_acc_info, &token_program_id)?;
             msg!("[SerumDex] invoke settle funds");
-            serum_dex_order::invoke_settle_funds(
-                market_acc_info.clone(),
-                token_program_info.clone(),
-                open_orders_acc_info.clone(),
-                wallet_owner.clone(),
-                coin_vault_acc_info.clone(),
-                source_token_acc_info.clone(),
-                pc_vault_acc_info.clone(),
-                protocol_token_acc_info.clone(),
-                vault_signer_acc_info.clone(),
-                &serum_dex_program_id,
-            )?;
+            if coin_vault_token_account.mint == source_token_account.mint {
+                serum_dex_order::invoke_settle_funds(
+                    market_acc_info.clone(),
+                    token_program_info.clone(),
+                    open_orders_acc_info.clone(),
+                    wallet_owner.clone(),
+                    coin_vault_acc_info.clone(),
+                    source_token_acc_info.clone(),
+                    pc_vault_acc_info.clone(),
+                    protocol_token_acc_info.clone(),
+                    vault_signer_acc_info.clone(),
+                    &serum_dex_program_id,
+                )?;
+            } else {
+                serum_dex_order::invoke_settle_funds(
+                    market_acc_info.clone(),
+                    token_program_info.clone(),
+                    open_orders_acc_info.clone(),
+                    wallet_owner.clone(),
+                    coin_vault_acc_info.clone(),
+                    protocol_token_acc_info.clone(),
+                    pc_vault_acc_info.clone(),
+                    source_token_acc_info.clone(),
+                    vault_signer_acc_info.clone(),
+                    &serum_dex_program_id,
+                )?;
+            }
+
             // TODO cancel_order ?
             let temp_account =
                 spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
