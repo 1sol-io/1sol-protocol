@@ -1,3 +1,4 @@
+use crate::util::unpack_token_account;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     instruction::{AccountMeta, Instruction},
@@ -5,7 +6,6 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::util::unpack_token_account;
 use std::mem::size_of;
 
 /// Swap instruction data
@@ -84,11 +84,18 @@ pub fn process_token_swap_invoke_swap(
     let source_token_acc = unpack_token_account(source_token_acc_info, &token_program_id)?;
     let swap_source_acc = unpack_token_account(swap_temp_source_token_acc_info, &token_program_id)?;
 
-    let (pool_source_token_acc_info, pool_destination_token_acc_info) = if source_token_acc.mint == swap_source_acc.mint {
-        (swap_temp_source_token_acc_info, swap_temp_destination_token_acc_info)
-    } else {
-        (swap_temp_destination_token_acc_info, swap_temp_source_token_acc_info)
-    };
+    let (pool_source_token_acc_info, pool_destination_token_acc_info) =
+        if source_token_acc.mint == swap_source_acc.mint {
+            (
+                swap_temp_source_token_acc_info,
+                swap_temp_destination_token_acc_info,
+            )
+        } else {
+            (
+                swap_temp_destination_token_acc_info,
+                swap_temp_source_token_acc_info,
+            )
+        };
 
     let mut accounts = vec![
         token_swap_program_info.clone(),

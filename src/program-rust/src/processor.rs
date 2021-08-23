@@ -141,25 +141,31 @@ impl Processor {
             "source_token_account amount: {}",
             source_token_account.amount
         );
+
         // this is middle destination token account
         let protocol_token_account =
             unpack_token_account(protocol_token_acc_info, &token_program_id)?;
         msg!(
             "protocol_token_account amount: {}",
             protocol_token_account.amount
-            );
-        let destination_token =
+        );
+        let destination_token_account =
             unpack_token_account(destination_token_acc_info, &token_program_id)?;
         msg!(
             "destination_token amount: {}",
-            destination_token.amount
+            destination_token_account.amount
         );
-        if protocol_token_account.mint != destination_token.mint {
+        if protocol_token_account.mint != destination_token_account.mint {
             return Err(OneSolError::InvalidInput.into());
         }
 
-        let dest_account1 =
-            unpack_token_account(protocol_token_acc_info, &token_program_id)?;
+        if protocol_token_account.owner == source_token_account.owner
+            || protocol_token_account.owner == destination_token_account.owner
+        {
+            return Err(OneSolError::InvalidOwner.into());
+        }
+
+        let dest_account1 = unpack_token_account(protocol_token_acc_info, &token_program_id)?;
         let amount1 = dest_account1.amount;
         // msg!("account amount: {}", dest_account1.amount);
 
@@ -199,13 +205,12 @@ impl Processor {
             let source_token_account2 =
                 unpack_token_account(source_token_acc_info, &token_program_id)?;
             msg!(
-                "serum_dex trade, limit_price: {}, max_coin_qty: {}, max_pc_qty: {}, account_size: {}, source_token_account_amount: {}, side: {:?}",
+                "serum_dex trade, limit_price: {}, max_coin_qty: {}, max_pc_qty: {}, account_size: {}, source_token_account_amount: {}",
                 data.limit_price,
                 data.max_coin_qty,
                 data.max_native_pc_qty_including_fees,
                 account_size,
                 source_token_account2.amount,
-                data.side,
             );
             if account_size < 11 {
                 return Err(OneSolError::InvalidInput.into());
@@ -215,7 +220,6 @@ impl Processor {
             let market_acc_info = next_account_info(dex_account_info_iter)?;
 
             let open_orders_acc_info = next_account_info(dex_account_info_iter)?;
-            // 这个 owner 跟上面可能会有重复
             // let open_orders_account_owner_acc_info = next_account_info(dex_account_info_iter)?;
 
             let request_queue_acc_info = next_account_info(dex_account_info_iter)?;
@@ -246,16 +250,18 @@ impl Processor {
             // let market = serum_dex_order::load_market_state(&market_acc_clone)?;
             // let coin_mint = Pubkey::new(transmute_one_to_bytes(&identity(market.coin_mint)));
             // // let pc_vault = Pubkey::new(transmute_one_to_bytes(&identity(market.pc_vault)));
+            let coin_vault_token_account =
+                unpack_token_account(coin_vault_acc_info, &token_program_id)?;
 
-            // let side = if coin_mint == source_token_account.mint {
-            //     serum_dex::matching::Side::Ask
-            // } else {
-            //     serum_dex::matching::Side::Bid
-            // };
+            let side = if coin_vault_token_account.mint == source_token_account.mint {
+                serum_dex::matching::Side::Ask
+            } else {
+                serum_dex::matching::Side::Bid
+            };
 
             msg!(
                 "[SerumDex] side: {:?}, market: {}",
-                data.side,
+                side,
                 market_acc_info.key
             );
             // msg!("[SerumDex] market, coin_vault: {:?}, pc_vault: {:?}", market.coin_vault, market.pc_vault);
@@ -283,7 +289,7 @@ impl Processor {
             serum_dex_order::invoke_new_order(
                 &new_order_accounts[..],
                 &serum_dex_program_id,
-                data.side,
+                side,
                 data.limit_price,
                 data.max_coin_qty,
                 data.client_order_id,
@@ -293,7 +299,8 @@ impl Processor {
             )?;
 
             // TODO check order coin and pc
-            let coin_vault_token_account = unpack_token_account(coin_vault_acc_info, &token_program_id)?;
+            let coin_vault_token_account =
+                unpack_token_account(coin_vault_acc_info, &token_program_id)?;
             msg!("[SerumDex] invoke settle funds");
             if coin_vault_token_account.mint == source_token_account.mint {
                 serum_dex_order::invoke_settle_funds(

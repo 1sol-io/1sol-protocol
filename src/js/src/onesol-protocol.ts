@@ -5,7 +5,6 @@ import * as BufferLayout from 'buffer-layout';
 import type {Connection, InstructionType, TransactionSignature} from '@solana/web3.js';
 import {
   SYSVAR_RENT_PUBKEY,
-  Account,
   Keypair,
   Signer,
   AccountMeta,
@@ -192,18 +191,10 @@ export class SerumDexMarketInfo {
     );
   }
 
-  public side(sourceMint: PublicKey): number {
-    if (this.market.baseMintAddress.equals(sourceMint)) {
-      return 0;
-    } 
-    return 1;
-  }
-
   dataLayout(): Array<any> {
     return [
       BufferLayout.u8('serumDexFlag'),
       BufferLayout.u8('serumDexAccountsSize'),
-      BufferLayout.u8('serumDexSide'),
       uint64('serumDexPrice'),
       uint64('serumDexMaxCoinQty'),
       uint64('serumDexMaxPcQty'),
@@ -211,11 +202,10 @@ export class SerumDexMarketInfo {
     ];
   }
 
-  dataMap(sourceMint: PublicKey) {
+  dataMap() {
     return {
       serumDexFlag: 1,
       serumDexAccountsSize: 11,
-      serumDexSide: this.side(sourceMint),
       serumDexPrice: this.limitPrice.toBuffer(),
       serumDexMaxCoinQty: this.maxCoinQty.toBuffer(),
       serumDexMaxPcQty: this.maxPcQty.toBuffer(),
@@ -324,7 +314,7 @@ export class OneSolProtocol{
    */
   static async createOneSolProtocol(
     connection: Connection,
-    protocolAccountInfo: Account,
+    protocolAccountInfo: Keypair,
     tokenAccountKey: PublicKey,
     tokenProgramId: PublicKey,
     authority: PublicKey,
@@ -394,7 +384,7 @@ export class OneSolProtocol{
   }
 
   static createInitSwapInstruction(
-    onesolProtocolAccount: Account,
+    onesolProtocolAccount: Keypair,
     authority: PublicKey,
     tokenAccount: PublicKey,
     protocolProgramId: PublicKey,
@@ -448,9 +438,9 @@ export class OneSolProtocol{
     if (splTokenSwapInfo === null && serumDexTradeInfo === null) {
       throw new Error('One of splTokenSwapInfo and serumDexInfo is must not be null');
     }
-    let transaction = new Transaction();
     let instructions = new Array<TransactionInstruction>();
     const signers: Array<Signer> = [];
+    signers.push(payer);
     await this.createSwapInstruction(
       userSource,
       sourceMint,
@@ -461,11 +451,15 @@ export class OneSolProtocol{
       instructions,
       signers,
     )
+    let transaction = new Transaction({
+      feePayer: payer.publicKey
+    });
+    // let transaction = new Transaction();
     transaction.add(
       ...instructions,
     )
-    signers.push(payer);
-    // console.log("signers length: " + signers.length);
+    console.log("instruction length: " + transaction.instructions.length);
+    console.log("signers length: " + signers.length);
     return await realSendAndConfirmTransaction(
       'swap',
       this.connection, 
@@ -495,7 +489,7 @@ export class OneSolProtocol{
       );
       console.log("orders length: " + orders.length);
       // if (orders.length === 0) {
-        let openOrderAccount = new Account(); 
+        let openOrderAccount = Keypair.generate(); 
         instructions.push(await OpenOrders.makeCreateAccountTransaction(
           this.connection,
           market.address,
@@ -597,7 +591,8 @@ export class OneSolProtocol{
       bflStruct.push(...serumDexInfo.dataLayout());
       dataMap = {
         ...dataMap,
-        ...serumDexInfo.dataMap(sourceMint),
+        // ...serumDexInfo.dataMap(sourceMint),
+        ...serumDexInfo.dataMap(),
       };
     } else {
       bflStruct.push(

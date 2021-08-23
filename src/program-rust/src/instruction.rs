@@ -51,12 +51,8 @@ pub struct SerumDexOrderData {
     pub client_order_id: u64,
     /// self_trade_behavior: serum dex order data
     pub self_trade_behavior: serum_dex::instruction::SelfTradeBehavior,
-    // /// limit: serum dex order data
-    // pub limit: u16,
     /// max_native_pc_qty_including_fees: serum dex order data
     pub max_native_pc_qty_including_fees: NonZeroU64,
-    /// side
-    pub side: serum_dex::matching::Side,
 }
 
 /// Instructions supported by the 1sol constracts program
@@ -195,7 +191,7 @@ impl OneSolInstruction {
         if flag == 0 {
             return Ok((None, rest));
         }
-        const DATA_LEN: usize = 34;
+        const DATA_LEN: usize = 33;
         if rest.len() < DATA_LEN {
             return Err(OneSolError::InvalidInput.into());
         }
@@ -207,27 +203,18 @@ impl OneSolInstruction {
         let arr_data = array_ref![data, 0, DATA_LEN];
         let (
             &account_size_arr,
-            &side_arr,
             &price_arr,
             &max_coin_qty_arr,
             &max_pc_qty_arr,
             &client_order_id_bytes,
-        ) = array_refs![arr_data, 1, 1, 8, 8, 8, 8];
+        ) = array_refs![arr_data, 1, 8, 8, 8, 8];
 
         let account_size = account_size_arr[0];
-        // account size may be 12
+        // account size may be 11
         if account_size == 0 {
             return Err(OneSolError::InvalidInput.into());
         }
-        let side = if side_arr[0] == 0 {
-            serum_dex::matching::Side::Ask
-        } else {
-            serum_dex::matching::Side::Bid
-        };
-        solana_program::msg!("[serum_dex] side: {:?}", side);
 
-        // let price_u64 = Self::unpack_u64_2(&price_arr)?;
-        // solana_program::msg!("price_u64: {}", price_u64);
         let limit_price =
             NonZeroU64::new(Self::unpack_u64_2(&price_arr)?).ok_or(OneSolError::InvalidInput)?;
 
@@ -247,7 +234,6 @@ impl OneSolInstruction {
                 client_order_id,
                 self_trade_behavior,
                 max_native_pc_qty_including_fees: max_pc_qty,
-                side:side,
             }),
             rest,
         ))

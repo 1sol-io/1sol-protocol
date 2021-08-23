@@ -3,7 +3,6 @@ import {
   prepareAccounts,
   prepareTokenSwap,
   prepareSerumDex,
-  marketInfo,
   swap,
 } from './swap-test';
 
@@ -23,7 +22,6 @@ export async function main() {
   console.log('Run test: swap');
   await swap();
   
-  // await marketInfo();
   console.log('Success\n');
 }
   

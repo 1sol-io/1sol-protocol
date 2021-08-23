@@ -3,9 +3,9 @@ use arrayref::array_refs;
 use bytemuck::{cast_slice, from_bytes};
 use serum_dex::{
     instruction::{
+        cancel_order_by_client_order_id as serum_dex_cancel_order,
         new_order as serum_dex_new_order,
         settle_funds as serum_dex_settle_funds,
-        cancel_order_by_client_order_id as serum_dex_cancel_order,
         // consume_events as serum_dex_consume_events,
         SelfTradeBehavior,
     },
@@ -153,7 +153,7 @@ pub fn invoke_cancel_order(
         open_orders_acc.key,
         open_orders_acc_owner.key,
         event_queue_acc.key,
-        client_order_id, 
+        client_order_id,
     )?;
 
     let account_infos = vec![
@@ -188,7 +188,6 @@ pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSol
     Ok(*market_state)
 }
 
-
 // fn check_account_padding(data: &[u8]) -> Result<&[[u8; 8]], OneSolError> {
 //     if data.len() < 12 {
 //         return Err(OneSolError::InvalidInput);
@@ -202,4 +201,3 @@ pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSol
 //     }
 //     Ok(try_cast_slice(data).map_err(|_| OneSolError::InvalidInput)?)
 // }
-
