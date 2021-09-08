@@ -168,9 +168,12 @@ pub fn invoke_cancel_order(
     invoke(&tx, &account_infos[..])
 }
 
+#[allow(dead_code)]
 pub const ACCOUNT_HEAD_PADDING: &[u8; 5] = b"serum";
+#[allow(dead_code)]
 pub const ACCOUNT_TAIL_PADDING: &[u8; 7] = b"padding";
 
+#[allow(dead_code)]
 pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSolError> {
     let account_data = market_acc.data.borrow();
     if account_data.len() < 12 {

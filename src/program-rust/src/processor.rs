@@ -364,9 +364,8 @@ impl Processor {
             protocol_authority.clone(),
             protocol_info.nonce,
             result_amount,
-        )
-        .unwrap();
-
+        )?;
+        // TODO close native_wrap account
         Ok(())
     }
 
