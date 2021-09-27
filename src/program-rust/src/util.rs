@@ -4,15 +4,15 @@ use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubk
 
 /// Unpacks a spl_token `Account`.
 pub fn unpack_token_account(
-    account_info: &AccountInfo,
-    token_program_id: &Pubkey,
+  account_info: &AccountInfo,
+  token_program_id: &Pubkey,
 ) -> Result<spl_token::state::Account, OneSolError> {
-    if account_info.owner != token_program_id {
-        Err(OneSolError::IncorrectTokenProgramId)
-    } else {
-        spl_token::state::Account::unpack(&account_info.data.borrow())
-            .map_err(|_| OneSolError::ExpectedAccount)
-    }
+  if account_info.owner != token_program_id {
+    Err(OneSolError::IncorrectTokenProgramId)
+  } else {
+    spl_token::state::Account::unpack(&account_info.data.borrow())
+      .map_err(|_| OneSolError::ExpectedAccount)
+  }
 }
 
 // /// convert u64 to u128

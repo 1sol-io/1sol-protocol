@@ -423,6 +423,7 @@ export class OneSolProtocol {
     toTokenAccountKey: PublicKey,
     userTransferAuthority: Keypair,
     amountIn: number | Numberu64,
+    expectAmountOut: number | Numberu64,
     minimumAmountOut: number | Numberu64,
     splTokenSwapInfo: TokenSwapInfo,
     instructions: Array<TransactionInstruction>,
@@ -440,6 +441,7 @@ export class OneSolProtocol {
         splTokenSwapInfo,
         this.protocolProgramId,
         amountIn,
+        expectAmountOut,
         minimumAmountOut
       )
     );
@@ -453,6 +455,7 @@ export class OneSolProtocol {
     fromTokenMintInfo: TokenMintInfo,
     toTokenMintInfo: TokenMintInfo,
     amountIn: number | Numberu64,
+    expectAmountOut: number | Numberu64,
     minimumAmountOut: number | Numberu64,
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -486,6 +489,7 @@ export class OneSolProtocol {
         fromTokenMintInfo,
         toTokenMintInfo,
         new Numberu64(amountIn),
+        new Numberu64(expectAmountOut),
         new Numberu64(minimumAmountOut)
       )
     );
@@ -502,16 +506,19 @@ export class OneSolProtocol {
     splTokenSwapInfo: TokenSwapInfo,
     protocolProgramId: PublicKey,
     amountIn: number | Numberu64,
-    minimumAmountOut: number | Numberu64
+    expectAmountOut: number | Numberu64,
+    minimumAmountOut: number | Numberu64,
   ): Promise<TransactionInstruction> {
     const bflStruct: any = [
       BufferLayout.u8("instruction"),
       uint64("amountIn"),
+      uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
     ];
     let dataMap: any = {
       instruction: 1, // Swap instruction
       amountIn: new Numberu64(amountIn).toBuffer(),
+      expectAmountOut: new Numberu64(expectAmountOut).toBuffer(),
       minimumAmountOut: new Numberu64(minimumAmountOut).toBuffer(),
     };
 
@@ -552,6 +559,7 @@ export class OneSolProtocol {
     fromTokenMintInfo: TokenMintInfo,
     toTokenMintInfo: TokenMintInfo,
     amountIn: Numberu64,
+    expectAmountOut: Numberu64,
     minimumAmountOut: Numberu64
     // side: "buy" | "sell",
     // exchangeRate: number | Numberu64
@@ -571,29 +579,25 @@ export class OneSolProtocol {
     const bflStruct: any = [
       BufferLayout.u8("instruction"),
       uint64("amount_in"),
+      uint64("expect_amount_out"),
+      uint64("minimumAmountOut"),
       BufferLayout.u8("side"),
-      uint64("rate"),
       BufferLayout.u8("from_decimals"),
-      BufferLayout.u8("to_decimals"),
-      BufferLayout.u8("strict"),
     ];
     const side = marketInfo.market.baseMintAddress.equals(
       fromTokenMintInfo.pubkey
     )
       ? 1
       : 0;
-    const exchangeRate = minimumAmountOut.div(
-      amountIn.div(new BN(10).pow(new BN(fromTokenMintInfo.mintInfo.decimals)))
-    );
-    console.log("side: " + side + ", exchangeRate: " + exchangeRate);
+ 
+    // console.log("side: " + side + ", exchangeRate: " + exchangeRate);
     let dataMap: any = {
       instruction: 2, // Swap instruction
-      amount_in: new Numberu64(amountIn).toBuffer(),
+      amount_in: amountIn.toBuffer(),
+      expectAmountOut: expectAmountOut.toBuffer(),
+      minimumAmountOut: minimumAmountOut.toBuffer(),
       side: side,
-      rate: new Numberu64(exchangeRate.toNumber()).toBuffer(),
       from_decimals: fromTokenMintInfo.mintInfo.decimals,
-      to_decimals: toTokenMintInfo.mintInfo.decimals,
-      strict: 1,
     };
 
     const keys = [

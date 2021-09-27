@@ -403,8 +403,6 @@ export async function swap(): Promise<void> {
     connection,
     tokenSwapAccount.publicKey,
     tokenSwapProgramPubKey,
-    new Numberu64(49000),
-    new Numberu64(40000),
     null,
   )
 
@@ -451,7 +449,7 @@ export async function swap(): Promise<void> {
   // let openOrder = await OpenOrders.load(connection, serumDefaultMarketOpenOrder.publicKey, serumDexProgramPubKey);
   console.log("[OnesolProtocol][SerumDex] market: " + market.address +
    ", baseLotSize: " + market.decoded.baseLotSize +
-   ", quoteLoteSize: " + market.decoded.quoteLotSize +
+   ", quoteLotSize: " + market.decoded.quoteLotSize +
    ", quoteDustThreshold:" + market.decoded.quoteDustThreshold
   );
 
@@ -467,10 +465,6 @@ export async function swap(): Promise<void> {
   let serumTradeInfo = new SerumDexMarketInfo(
     serumDexProgramPubKey,
     market,
-    new Numberu64(1),
-    new Numberu64(51000),
-    new Numberu64(51000),
-    new Numberu64(65535),
   );
 
   // await onesolProtocol.swap(
@@ -482,15 +476,15 @@ export async function swap(): Promise<void> {
   //   serumTradeInfo,
   //   Keypair.fromSecretKey(basePayer.secretKey),
   // );
-  await onesolProtocol.swap(
-    userAccountB,
-    tokenMintB.publicKey,
-    userAccountA,
-    SWAP_AMOUNT_OUT,
-    tokenSwapInfo,
-    serumTradeInfo,
-    alice,
-  );
+  // await onesolProtocol.swap(
+  //   userAccountB,
+  //   tokenMintB.publicKey,
+  //   userAccountA,
+  //   SWAP_AMOUNT_OUT,
+  //   tokenSwapInfo,
+  //   serumTradeInfo,
+  //   alice,
+  // );
 
   await sleep(500);
   console.log("swap done.")
@@ -536,8 +530,6 @@ export async function loadTokenSwapInfo(
   connection: Connection,
   address: PublicKey,
   programId: PublicKey,
-  amountIn: Numberu64,
-  minimumAmountOut: Numberu64,
   hostFeeAccount: PublicKey | null,
 ): Promise<TokenSwapInfo> {
   const data = await loadAccount(connection, address, programId);
@@ -562,8 +554,6 @@ export async function loadTokenSwapInfo(
   const curveType = tokenSwapData.curveType;
 
   return new TokenSwapInfo(
-    amountIn,
-    minimumAmountOut,
     programId,
     address,
     authority,

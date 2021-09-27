@@ -232,20 +232,26 @@ impl Processor {
     );
 
     let dest_account = spl_token::state::Account::unpack(&protocol_token_acc_info.data.borrow())?;
-    let result_amount = dest_account.amount - amount1;
+    let to_amount_include_fee = dest_account.amount - amount1;
 
-    // TODO 计算手续费
     msg!(
-      "onesol_destination amount: {}, should transfer: {}, minimum: {}",
+      "onesol_destination amount: {}, result_with_fee: {}, expect: {}, minimum: {}",
       dest_account.amount,
-      result_amount,
+      to_amount_include_fee,
+      data.expect_amount_out,
       token_swap_minimum_amount_out,
     );
-    if result_amount < token_swap_minimum_amount_out.get() {
+    if to_amount_include_fee < token_swap_minimum_amount_out.get() {
       return Err(OneSolError::ExceededSlippage.into());
     }
+    let fee = to_amount_include_fee
+      .checked_sub(data.expect_amount_out.get())
+      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
+      .unwrap_or(0);
+    let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
+
     // Transfer OnesolB -> AliceB
-    msg!("[token_swap] transfer to user destination");
+    msg!("[token_swap] transfer to user destination, {}", to_amount);
     sol_log_compute_units();
     Self::token_transfer(
       protocol_account.key,
@@ -254,7 +260,7 @@ impl Processor {
       destination_token_acc_info.clone(),
       protocol_authority.clone(),
       protocol_info.nonce,
-      result_amount,
+      to_amount,
     )?;
     // TODO close native_wrap account
     Ok(())
@@ -305,10 +311,6 @@ impl Processor {
     }
     let protocol_info = OneSolState::unpack(&protocol_account.data.borrow())?;
 
-    let mut min_exchange_rate = data.min_exchange_rate;
-    // Not used for direct swaps
-    min_exchange_rate.quote_decimals = 0;
-
     let (pc_wallet_account, coin_wallet_account) = match data.side {
       DexSide::Bid => (source_token_acc_info, protocol_token_acc_info),
       DexSide::Ask => (protocol_token_acc_info, source_token_acc_info),
@@ -343,8 +345,8 @@ impl Processor {
     msg!("amount_in: {}", data.amount_in);
 
     match data.side {
-      DexSide::Bid => orderbook.buy(data.amount_in, None)?,
-      DexSide::Ask => orderbook.sell(data.amount_in, None)?,
+      DexSide::Bid => orderbook.buy(data.amount_in.get(), None)?,
+      DexSide::Ask => orderbook.sell(data.amount_in.get(), None)?,
     }
     orderbook.settle(None)?;
 
@@ -354,49 +356,52 @@ impl Processor {
     msg!("to_amount_after: {}", to_amount_after);
 
     let from_amount = from_amount_before.checked_sub(from_amount_after).unwrap();
-    let to_amount = to_amount_after.checked_sub(to_amount_before).unwrap();
+    let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
+    msg!("from_amount: {}", from_amount);
 
-    if to_amount == 0 {
+    if to_amount_include_fee == 0 {
       return Err(OneSolError::DexSwapError.into());
     }
 
-    let min_expected_amount = u128::from(from_amount)
-      .checked_mul(min_exchange_rate.rate.into())
-      .unwrap()
-      .checked_mul(
-        10u128
-          .checked_pow(min_exchange_rate.quote_decimals.into())
-          .unwrap(),
-      )
-      .unwrap();
+    // let min_expected_amount = u128::from(from_amount)
+    //   .checked_mul(min_exchange_rate.rate.into())
+    //   .unwrap()
+    //   .checked_mul(
+    //     10u128
+    //       .checked_pow(min_exchange_rate.quote_decimals.into())
+    //       .unwrap(),
+    //   )
+    //   .unwrap();
     // If there is spill (i.e. quote tokens *not* fully consumed for
     // the buy side of a transitive swap), then credit those tokens marked
     // at the executed exchange rate to create an "effective" to_amount.
-    let effective_to_amount = u128::from(to_amount)
-      .checked_mul(
-        10u128
-          .checked_pow(min_exchange_rate.from_decimals.into())
-          .unwrap(),
-      )
-      .unwrap()
-      .checked_mul(
-        10u128
-          .checked_pow(min_exchange_rate.quote_decimals.into())
-          .unwrap(),
-      )
-      .unwrap();
-
-    if effective_to_amount < min_expected_amount {
-      msg!(
-        "effective_to_amount, min_expected_amount: {:?}, {:?}",
-        effective_to_amount,
-        min_expected_amount,
-      );
+    // let effective_to_amount = u128::from(to_amount)
+    //   .checked_mul(
+    //     10u128
+    //       .checked_pow(data.from_decimals.into())
+    //       .unwrap(),
+    //   )
+    //   .unwrap();
+    msg!(
+      "to_amount_include_fee: {:?}, min_expect_amount: {:?}, expect_amount: {:?}",
+      to_amount_include_fee,
+      data.minimum_amount_out,
+      data.expect_amount_out,
+    );
+    if to_amount_include_fee < data.minimum_amount_out.get() {
       return Err(OneSolError::ExceededSlippage.into());
     }
     // TODO 计算手续费
+    let fee = to_amount_include_fee
+      .checked_sub(data.expect_amount_out.get())
+      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
+      .unwrap_or(0);
+    let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
 
-    msg!("[serum_dex] transfer to user destination, amount: {}", to_amount);
+    msg!(
+      "[serum_dex] transfer to user destination, amount: {}",
+      to_amount
+    );
     sol_log_compute_units();
     Self::token_transfer(
       protocol_account.key,
@@ -474,6 +479,7 @@ impl PrintProgramError for OneSolError {
       OneSolError::DexInstructionError => msg!("Error: DexInstructionError"),
       OneSolError::DexInvokeError => msg!("Error: DexInvokeError"),
       OneSolError::DexSwapError => msg!("Error: DexSwapError"),
+      OneSolError::InvalidExpectAmountOut => msg!("Error: InvalidExpectAmountOut"),
     }
   }
 }
