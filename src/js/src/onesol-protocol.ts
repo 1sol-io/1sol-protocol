@@ -578,8 +578,8 @@ export class OneSolProtocol {
     }
     const bflStruct: any = [
       BufferLayout.u8("instruction"),
-      uint64("amount_in"),
-      uint64("expect_amount_out"),
+      uint64("amountIn"),
+      uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
       BufferLayout.u8("side"),
       BufferLayout.u8("from_decimals"),
@@ -593,7 +593,7 @@ export class OneSolProtocol {
     // console.log("side: " + side + ", exchangeRate: " + exchangeRate);
     let dataMap: any = {
       instruction: 2, // Swap instruction
-      amount_in: amountIn.toBuffer(),
+      amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
       side: side,

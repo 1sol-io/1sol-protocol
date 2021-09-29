@@ -163,11 +163,11 @@ impl SwapSerumDex {
       &[from_decimals],
     ) = array_refs![arr_data, 8, 8, 8, 1, 1];
     let amount_in =
-      NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(OneSolError::InvalidInput)?;
+      NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(OneSolError::ZeroTradingTokens)?;
     let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
-      .ok_or(OneSolError::InvalidInput)?;
+      .ok_or(OneSolError::ZeroTradingTokens)?;
     let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
-      .ok_or(OneSolError::InvalidInput)?;
+      .ok_or(OneSolError::ZeroTradingTokens)?;
     // let rate = u64::from_le_bytes(rate_arr);
     if expect_amount_out.get() < minimum_amount_out.get() || expect_amount_out.get() == 0 {
       return Err(OneSolError::InvalidExpectAmountOut.into());
