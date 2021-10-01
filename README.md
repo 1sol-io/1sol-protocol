@@ -27,7 +27,7 @@ So we decided to create 1Sol.
 
 ## Program id
 ### devnet 
-`HEQQHE6U6xp4aurpZFoBNguusLWs3cyyxV9A2qUA9cQo`
+`9Bj8zgNWT6UaNcXMgzMFrnH5Z13nQ6vFkRNxP743zZyr`
 
 ## TODO
 

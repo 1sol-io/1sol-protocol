@@ -4,13 +4,17 @@
   "editor.insertSpaces": true,
   "editor.renderWhitespace": "selection",
   "cSpell.words": [
+    "bitflags",
+    "coption",
     "entrypoint",
+    "enumflags",
     "hardcode",
     "lamports",
     "msrm",
     "onesol",
     "Orderbook",
     "serumdex",
+    "spltokenswap",
     "sysvar",
     "sysvars",
     "tokenswap"

@@ -1,12 +1,26 @@
 //! Error types
 
 use num_derive::FromPrimitive;
-use solana_program::{decode_error::DecodeError, program_error::ProgramError};
+use solana_program::{decode_error::DecodeError, msg, program_error::{PrintProgramError, ProgramError}};
 use thiserror::Error;
+
+
+
+/// OneSolResult 
+pub type ProtocolResult<T = ()> = Result<T, ProtocolError>;
+
+#[macro_export]
+macro_rules! check_unreachable {
+  () => {
+    {Err(ProtocolError::Unreachable) }
+  };
+}
+
+// pub(crate) use check_unreachable;
 
 /// Errors that may be returned by the OneSol program.
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
-pub enum OneSolError {
+pub enum ProtocolError {
   /// Unknown error.
   #[error("Unknown error")]
   Unknown,
@@ -74,16 +88,128 @@ pub enum OneSolError {
   /// Invalid expected amount tout
   #[error("invalid expect amount out")]
   InvalidExpectAmountOut,
+
+  /// Invalid account flags
+  #[error("invalid account flags")]
+  InvalidAccountFlags,
+
+  /// Invalid account flags
+  #[error("account data borrow failed")]
+  BorrowAccountDataError,
+
+  /// Invalid Authority
+  #[error("invalid authority")]
+  InvalidAuthority,
+
+  /// Invalid token account
+  #[error("invalid token account")]
+  InvalidTokenAccount,
+
+  /// Invalid pc mint
+  #[error("invalid Pc ")]
+  InvalidPcMint,
+  /// Invalid coin mint
+  #[error("invalid Pc mint")]
+  InvalidCoinMint,
+
+  /// invalid token mint
+  #[error("invalid token mint")]
+  InvalidTokenMint,
+
+  /// Init OpenOrders instruction error
+  #[error("init open_orders instruction error")]
+  InitOpenOrdersInstructionError,
+
+  /// invoke error
+  #[error("invoke error")]
+  InvokeError,
+
+  /// Invalid Nonce
+  #[error("invalid nonce")]
+  InvalidNonce,
+
+  /// Invalid token program
+  #[error("invalid token program")]
+  InvalidTokenProgram,
+
+  /// Invalid signer account
+  #[error("invalid signer account")]
+  InvalidSignerAccount,
+
+  /// Invalid Account data 
+  #[error("invalid account data")]
+  InvalidAccountData,
+
+  /// Invalid Accounts length
+  #[error("invalid accounts length")]
+  InvalidAccountsLength,
+
+  /// Unreachable
+  #[error("unreachable")]
+  Unreachable,
+
+  /// readable account detect
+  #[error("Readable account")]
+  ReadableAccount,
+
+  /// Invalid source token balance
+  #[error("invalid source balance")]
+  InvalidSourceBalance,
+
 }
-impl From<OneSolError> for ProgramError {
-  fn from(e: OneSolError) -> Self {
+impl From<ProtocolError> for ProgramError {
+  fn from(e: ProtocolError) -> Self {
     ProgramError::Custom(e as u32)
   }
 }
-impl<T> DecodeError<T> for OneSolError {
+impl<T> DecodeError<T> for ProtocolError {
   fn type_of() -> &'static str {
     "OneSolError"
   }
 }
 
-// type OnesolResult<T> = Result<T, dyn std::error::Error>;
+
+impl PrintProgramError for ProtocolError {
+  fn print<E>(&self)
+  where
+    E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + num_traits::FromPrimitive,
+  {
+    match self {
+      ProtocolError::Unknown => msg!("Error: Unknown"),
+      ProtocolError::ExceededSlippage => msg!("Error: ExceededSlippage"),
+      ProtocolError::IncorrectSwapAccount => msg!("Error: IncorrectSwapAccount"),
+      ProtocolError::InvalidDelegate => msg!("Error: InvalidDelegate"),
+      ProtocolError::InvalidCloseAuthority => msg!("Error: InvalidCloseAuthority"),
+      ProtocolError::InvalidInstruction => msg!("Error: InvalidInstruction"),
+      ProtocolError::InvalidInput => msg!("Error: InvalidInput"),
+      ProtocolError::InvalidOwner => msg!("Error: InvalidOwner"),
+      ProtocolError::InvalidProgramAddress => msg!("Error: InvalidProgramAddress"),
+      ProtocolError::ExpectedAccount => msg!("Error: ExpectedAccount"),
+      ProtocolError::IncorrectTokenProgramId => msg!("Error: IncorrectTokenProgramId"),
+      ProtocolError::ConversionFailure => msg!("Error: ConversionFailure"),
+      ProtocolError::ZeroTradingTokens => msg!("Error: ZeroTradingTokens"),
+      ProtocolError::InternalError => msg!("Error: InternalError"),
+      ProtocolError::DexInstructionError => msg!("Error: DexInstructionError"),
+      ProtocolError::DexInvokeError => msg!("Error: DexInvokeError"),
+      ProtocolError::DexSwapError => msg!("Error: DexSwapError"),
+      ProtocolError::InvalidExpectAmountOut => msg!("Error: InvalidExpectAmountOut"),
+      ProtocolError::InvalidAccountFlags => msg!("Error: InvalidAccountFlags"),
+      ProtocolError::BorrowAccountDataError => msg!("Error: BorrowAccountDataError"),
+      ProtocolError::InvalidAuthority => msg!("Error: InvalidAuthority"),
+      ProtocolError::InvalidTokenAccount => msg!("Error: InvalidTokenAccount"),
+      ProtocolError::InitOpenOrdersInstructionError => msg!("Error: InitOpenOrdersInstructionError"),
+      ProtocolError::InvokeError => msg!("Error: InvokeError"),
+      ProtocolError::InvalidNonce => msg!("Error: InvalidNonce"),
+      ProtocolError::InvalidTokenMint => msg!("Error: InvalidTokenMint"),
+      ProtocolError::InvalidPcMint => msg!("Error: InvalidPcMint"),
+      ProtocolError::InvalidCoinMint => msg!("Error: InvalidCoinMint"),
+      ProtocolError::InvalidTokenProgram => msg!("Error: InvalidTokenProgram"),
+      ProtocolError::InvalidSignerAccount => msg!("Error: InvalidSignerAccount"),
+      ProtocolError::InvalidAccountData => msg!("Error: InvalidAccountData"),
+      ProtocolError::InvalidAccountsLength => msg!("Error: InvalidAccountsLength"),
+      ProtocolError::Unreachable => msg!("Error: Unreachable"),
+      ProtocolError::ReadableAccount => msg!("Error: ReadableAccount"),
+      ProtocolError::InvalidSourceBalance => msg!("Error: InvalidSourceBalance"),
+    }
+  }
+}

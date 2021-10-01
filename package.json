@@ -11,7 +11,7 @@
     "rustfmt:program-rust": "pushd src/program-rust && cargo fmt --all && popd",
     "deploy:program-rust": "solana program deploy ./dist/program/onesol.so",
     "pretty": "prettier --write '{,src/**/}*.ts'",
-    "postinstall": "cargo update --manifest-path=src/program-rust/Cargo.toml",
+    "update:program_rust": "cargo update --manifest-path=src/program-rust/Cargo.toml",
     "cluster:localhost": "cp cluster-localhost.env .env",
     "start": "ts-node src/js/cli/main.ts",
     "build:js": "tsc"
@@ -27,16 +27,18 @@
   },
   "homepage": "https://github.com/1sol-io/1sol-protocol#readme",
   "dependencies": {
-    "@solana/web3.js": "^1.21.0",
+    "@solana/web3.js": "^1.29.2",
     "bn.js": "^5.1.3",
-    "buffer-layout": "^1.2.2",
-    "dotenv": "9.0.2"
+    "bs58": "^4.0.1",
+    "buffer-layout": "^1.2.2"
   },
   "devDependencies": {
+    "@project-serum/serum": "0.13.54",
     "@solana/spl-token": "0.1.4",
     "@solana/spl-token-swap": "0.1.0",
-    "@project-serum/serum": "0.13.54",
     "@types/bn.js": "^5.1.0",
+    "@types/bs58": "^4.0.1",
+    "dotenv": "9.0.2",
     "eslint": "^7.9.0",
     "eslint-plugin-import": "^2.22.0",
     "ts-node": "^9.1.1",

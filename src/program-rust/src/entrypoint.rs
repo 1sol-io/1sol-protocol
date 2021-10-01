@@ -1,6 +1,6 @@
 //! Program entrypoint
 
-use crate::{error::OneSolError, processor::Processor};
+use crate::{error::ProtocolError, processor::Processor};
 use solana_program::{
   account_info::AccountInfo, entrypoint, entrypoint::ProgramResult,
   program_error::PrintProgramError, pubkey::Pubkey,
@@ -14,7 +14,7 @@ fn process_instruction(
 ) -> ProgramResult {
   if let Err(error) = Processor::process(program_id, accounts, instruction_data) {
     // catch the error so we can print it
-    error.print::<OneSolError>();
+    error.print::<ProtocolError>();
     return Err(error);
   }
   Ok(())

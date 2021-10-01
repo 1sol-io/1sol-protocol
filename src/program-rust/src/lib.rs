@@ -1,5 +1,3 @@
-#![deny(missing_docs)]
-#![forbid(unsafe_code)]
 
 //! OneSol - DEX Aggregator
 
@@ -8,7 +6,7 @@ pub mod instruction;
 pub mod processor;
 pub mod state;
 mod swappers;
-mod util;
+mod account_parser;
 
 #[cfg(not(feature = "no-entrypoint"))]
 mod entrypoint;

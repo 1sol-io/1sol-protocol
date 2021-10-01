@@ -1,8 +1,12 @@
-use crate::error::OneSolError;
+use crate::error::{
+  ProtocolError,
+};
 use arrayref::array_refs;
 use bytemuck::{cast_slice, from_bytes};
-use serum_dex::{matching::Side, state::MarketState};
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, program::invoke};
+use serum_dex::{instruction, matching::Side, state::MarketState};
+use solana_program::{
+  account_info::AccountInfo, entrypoint::ProgramResult, program::{invoke_signed}, pubkey::Pubkey,
+};
 use std::num::NonZeroU64;
 
 // An exchange rate for swapping *from* one token *to* another.
@@ -41,41 +45,43 @@ pub struct ExchangeRate {
 // Market accounts are the accounts used to place orders against the dex minus
 // common accounts, i.e., program ids, sysvars, and the `pc_wallet`.
 #[derive(Clone)]
-pub struct MarketAccounts<'info> {
-  pub market: AccountInfo<'info>,
-  pub open_orders: AccountInfo<'info>,
-  pub request_queue: AccountInfo<'info>,
-  pub event_queue: AccountInfo<'info>,
-  pub bids: AccountInfo<'info>,
-  pub asks: AccountInfo<'info>,
+pub struct MarketAccounts<'a, 'info:'a> {
+  pub market: &'a AccountInfo<'info>,
+  pub open_orders: &'a AccountInfo<'info>,
+  pub request_queue: &'a AccountInfo<'info>,
+  pub event_queue: &'a AccountInfo<'info>,
+  pub bids: &'a AccountInfo<'info>,
+  pub asks: &'a AccountInfo<'info>,
   // The `spl_token::Account` that funds will be taken from, i.e., transferred
   // from the user into the market's vault.
   //
   // For bids, this is the base currency. For asks, the quote.
-  pub order_payer_token_account: AccountInfo<'info>,
+  pub order_payer_token_account: &'a AccountInfo<'info>,
   // Also known as the "base" currency. For a given A/B market,
   // this is the vault for the A mint.
-  pub coin_vault: AccountInfo<'info>,
+  pub coin_vault: &'a AccountInfo<'info>,
   // Also known as the "quote" currency. For a given A/B market,
   // this is the vault for the B mint.
-  pub pc_vault: AccountInfo<'info>,
+  pub pc_vault: &'a AccountInfo<'info>,
   // PDA owner of the DEX's token accounts for base + quote currencies.
-  pub vault_signer: AccountInfo<'info>,
+  pub vault_signer: &'a AccountInfo<'info>,
   // User wallets.
-  pub coin_wallet: AccountInfo<'info>,
+  pub coin_wallet: &'a AccountInfo<'info>,
 }
 
 #[derive(Clone)]
-pub struct OrderbookClient<'info> {
-  pub market: MarketAccounts<'info>,
-  pub authority: AccountInfo<'info>,
-  pub pc_wallet: AccountInfo<'info>,
-  pub dex_program: AccountInfo<'info>,
-  pub token_program: AccountInfo<'info>,
-  pub rent: AccountInfo<'info>,
+pub struct OrderbookClient<'a, 'info:'a> {
+  pub market: MarketAccounts<'a, 'info>,
+  pub amm_info: &'a Pubkey,
+  pub authority: &'a AccountInfo<'info>,
+  pub pc_wallet: &'a AccountInfo<'info>,
+  pub dex_program: &'a AccountInfo<'info>,
+  pub token_program: &'a AccountInfo<'info>,
+  pub rent: &'a AccountInfo<'info>,
+  pub nonce: u8,
 }
 
-impl<'info> OrderbookClient<'info> {
+impl<'a, 'info:'a> OrderbookClient<'a, 'info> {
   // Executes the sell order portion of the swap, purchasing as much of the
   // quote currency as possible for the given `base_amount`.
   //
@@ -180,6 +186,7 @@ impl<'info> OrderbookClient<'info> {
       }
       None => None,
     };
+
     let instruction = serum_dex::instruction::new_order(
       self.market.market.key,
       self.market.open_orders.key,
@@ -204,9 +211,13 @@ impl<'info> OrderbookClient<'info> {
       limit,
       NonZeroU64::new(max_native_pc_qty).unwrap(),
     )
-    .map_err(|_| OneSolError::InvalidDelegate)?;
+    .map_err(|_| ProtocolError::InvalidDelegate)?;
 
-    invoke(&instruction, &accounts[..])
+    let info_bytes = self.amm_info.to_bytes();
+    let authority_signature_seeds = [&info_bytes[..32], &[self.nonce]];
+    let signers = &[&authority_signature_seeds[..]];
+
+    invoke_signed(&instruction, &accounts[..], signers)
   }
 
   pub fn settle(&self, referral: Option<AccountInfo<'info>>) -> ProgramResult {
@@ -241,7 +252,10 @@ impl<'info> OrderbookClient<'info> {
       referral_key,
       self.market.vault_signer.key,
     )?;
-    invoke(&instruction, &accounts[..])
+    let info_bytes = self.amm_info.to_bytes();
+    let authority_signature_seeds = [&info_bytes[..32], &[self.nonce]];
+    let signers = &[&authority_signature_seeds[..]];
+    invoke_signed(&instruction, &accounts[..], signers)
   }
 }
 
@@ -250,167 +264,23 @@ fn coin_lots(market: &MarketState, size: u64) -> u64 {
   size.checked_div(market.coin_lot_size).unwrap()
 }
 
-// pub fn invoke_new_order(
-//   accounts: &[AccountInfo],
-//   program_id: &Pubkey,
-//   side: Side,
-//   limit_price: NonZeroU64,
-//   max_coin_qty: NonZeroU64,
-//   max_native_pc_qty_including_fees: NonZeroU64,
-// ) -> ProgramResult {
-//   let account_iters = &mut accounts.iter();
-//   let market_account = next_account_info(account_iters)?;
-//   let open_orders_account = next_account_info(account_iters)?;
-//   let request_queue = next_account_info(account_iters)?;
-//   let event_queue = next_account_info(account_iters)?;
-//   let market_bids = next_account_info(account_iters)?;
-//   let market_asks = next_account_info(account_iters)?;
-//   let order_payer = next_account_info(account_iters)?;
-//   let open_orders_account_owner = next_account_info(account_iters)?;
-//   let coin_vault = next_account_info(account_iters)?;
-//   let pc_vault = next_account_info(account_iters)?;
-//   let spl_token_program_id = next_account_info(account_iters)?;
-//   let rend_sysvar_id = next_account_info(account_iters)?;
-
-//   let account_infos = vec![
-//     market_account.clone(),
-//     open_orders_account.clone(),
-//     request_queue.clone(),
-//     event_queue.clone(),
-//     market_bids.clone(),
-//     market_asks.clone(),
-//     order_payer.clone(),
-//     open_orders_account_owner.clone(),
-//     coin_vault.clone(),
-//     pc_vault.clone(),
-//     spl_token_program_id.clone(),
-//     rend_sysvar_id.clone(),
-//   ];
-
-//   let tx = new_order_instruction(
-//     market_account.key,
-//     open_orders_account.key,
-//     request_queue.key,
-//     event_queue.key,
-//     market_bids.key,
-//     market_asks.key,
-//     order_payer.key,
-//     open_orders_account_owner.key,
-//     coin_vault.key,
-//     pc_vault.key,
-//     spl_token_program_id.key,
-//     rend_sysvar_id.key,
-//     None,
-//     program_id,
-//     side,
-//     limit_price,
-//     max_coin_qty,
-//     OrderType::ImmediateOrCancel,
-//     client_order_id,
-//     self_trade_behavior,
-//     limit,
-//     max_native_pc_qty_including_fees,
-//   )?;
-//   invoke(&tx, &account_infos[..])
-// }
-
-// pub fn invoke_settle_funds<'a>(
-//   market_account: AccountInfo<'a>,
-//   spl_token_program_account: AccountInfo<'a>,
-//   open_orders_account: AccountInfo<'a>,
-//   open_orders_account_owner: AccountInfo<'a>,
-//   coin_vault_account: AccountInfo<'a>,
-//   coin_wallet_account: AccountInfo<'a>,
-//   pc_vault_account: AccountInfo<'a>,
-//   pc_wallet_account: AccountInfo<'a>,
-//   vault_signer_account: AccountInfo<'a>,
-//   program_id: &Pubkey,
-// ) -> ProgramResult {
-//   msg!("[SerumDex] settle funds tx");
-//   let tx = serum_dex_settle_funds(
-//     program_id,
-//     market_account.key,
-//     spl_token_program_account.key,
-//     open_orders_account.key,
-//     open_orders_account_owner.key,
-//     coin_vault_account.key,
-//     coin_wallet_account.key,
-//     pc_vault_account.key,
-//     pc_wallet_account.key,
-//     Some(pc_wallet_account.key),
-//     vault_signer_account.key,
-//   )?;
-//   msg!("[SerumDex] settle funds accounts");
-//   let account_infos = vec![
-//     market_account.clone(),
-//     open_orders_account.clone(),
-//     open_orders_account_owner.clone(),
-//     coin_vault_account.clone(),
-//     pc_vault_account.clone(),
-//     coin_wallet_account.clone(),
-//     pc_wallet_account.clone(),
-//     vault_signer_account.clone(),
-//     spl_token_program_account.clone(),
-//     pc_wallet_account.clone(),
-//   ];
-//   msg!("[SerumDex] settle fund invoke");
-//   invoke(&tx, &account_infos[..])
-// }
-
-// pub fn invoke_cancel_order(
-//   accounts: &[AccountInfo],
-//   program_id: &Pubkey,
-//   client_order_id: u64,
-// ) -> ProgramResult {
-//   msg!("[SerumDex] cancel order");
-//   let account_iters = &mut accounts.iter();
-//   let market_acc = next_account_info(account_iters)?;
-//   let market_bids_acc = next_account_info(account_iters)?;
-//   let market_asks_acc = next_account_info(account_iters)?;
-//   let open_orders_acc = next_account_info(account_iters)?;
-//   let open_orders_acc_owner = next_account_info(account_iters)?;
-//   let event_queue_acc = next_account_info(account_iters)?;
-
-//   let tx = serum_dex_cancel_order(
-//     program_id,
-//     market_acc.key,
-//     market_bids_acc.key,
-//     market_asks_acc.key,
-//     open_orders_acc.key,
-//     open_orders_acc_owner.key,
-//     event_queue_acc.key,
-//     client_order_id,
-//   )?;
-
-//   let account_infos = vec![
-//     market_acc.clone(),
-//     market_bids_acc.clone(),
-//     market_asks_acc.clone(),
-//     open_orders_acc.clone(),
-//     open_orders_acc_owner.clone(),
-//     event_queue_acc.clone(),
-//   ];
-
-//   invoke(&tx, &account_infos[..])
-// }
-
 #[allow(dead_code)]
 pub const ACCOUNT_HEAD_PADDING: &[u8; 5] = b"serum";
 #[allow(dead_code)]
 pub const ACCOUNT_TAIL_PADDING: &[u8; 7] = b"padding";
 
 #[allow(dead_code)]
-pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSolError> {
+pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, ProtocolError> {
   let account_data = market_acc.data.borrow();
   if account_data.len() < 12 {
-    return Err(OneSolError::InvalidInput);
+    return Err(ProtocolError::InvalidInput);
   }
   let (head, data, tail) = array_refs![&account_data, 5; ..; 7];
   if head != ACCOUNT_HEAD_PADDING {
-    return Err(OneSolError::InvalidInput);
+    return Err(ProtocolError::InvalidInput);
   }
   if tail != ACCOUNT_TAIL_PADDING {
-    return Err(OneSolError::InvalidInput.into());
+    return Err(ProtocolError::InvalidInput.into());
   }
   let market_state: &MarketState = from_bytes(cast_slice(data));
 
@@ -430,3 +300,35 @@ pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, OneSol
 //     }
 //     Ok(try_cast_slice(data).map_err(|_| OneSolError::InvalidInput)?)
 // }
+
+pub fn invoke_init_open_orders<'a>(
+  amm_info_key: &Pubkey,
+  program_id: &Pubkey,
+  open_orders: &AccountInfo<'a>,
+  authority: &AccountInfo<'a>,
+  market: &AccountInfo<'a>,
+  rent: &AccountInfo<'a>,
+  nonce: u8,
+) -> Result<(), ProtocolError>{
+  let info_bytes = amm_info_key.to_bytes();
+  let authority_signature_seeds = [&info_bytes[..32], &[nonce]];
+  let signers = &[&authority_signature_seeds[..]];
+
+  let ix = instruction::init_open_orders(
+    program_id,
+    open_orders.key,
+    authority.key,
+    market.key,
+  ).map_err(|_| ProtocolError::InitOpenOrdersInstructionError)?;
+  invoke_signed(
+    &ix,
+    &[
+      open_orders.clone(),
+      authority.clone(),
+      market.clone(),
+      rent.clone(),
+    ],
+    signers,
+  ).map_err(|_|ProtocolError::InvokeError)
+
+}
