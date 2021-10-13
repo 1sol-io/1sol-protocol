@@ -1,11 +1,14 @@
-use std::cell::RefMut;
+use std::{cell::RefMut};
 
 use crate::{
   check_unreachable,
   error::{ProtocolError, ProtocolResult},
   state::AmmInfo,
 };
-use serum_dex::matching::Side as DexSide;
+use serum_dex::{
+  matching::Side as DexSide,
+  state::AccountFlag,
+};
 use arrayref::{array_ref, array_refs};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey};
 
@@ -89,12 +92,13 @@ declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
   // SplTokenSwap info data_len should be 323
-  if data.len() != 323 {
-    return Err(ProtocolError::InvalidAccountData);
+  msg!("spl-tokenswap-info, data.len(): {}, is_initialized: {}", data.len(), data[0]);
+  if data.len() != 324 {
+    return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
   let is_initialized = data[0];
   if is_initialized != 1u8 {
-    return Err(ProtocolError::InvalidAccountData);
+    return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
   Ok(())
 });
@@ -108,21 +112,23 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
   // [5,8,32,8,32,32,32,8,8,32,8,8,8,32,32,32,32,8,8,8,8,7]
   const MARKET_LEN: usize = 388;
-  if data.len() != 323 {
-    return Err(ProtocolError::InvalidAccountData);
+  if data.len() != MARKET_LEN {
+    return Err(ProtocolError::InvalidSerumDexMarketAccount);
   }
-  let flag_data = u64::from_le_bytes(*array_ref![data, 0, 8]);
+  let flag_data = u64::from_le_bytes(*array_ref![data, 5, 8]);
   /**
    *  Initialized = 1u64 << 0,
    *  Market = 1u64 << 1,
    */
-  if flag_data != (1u64 << 0 | 1u64 << 1) {
+  // BitFlags::
+  // if flag_data != 3768656749939 {
+  if flag_data != (AccountFlag::Initialized | AccountFlag::Market).bits() {
     msg!(
       "flag_data: {:?}, expect: {:?}",
       flag_data,
-      (1u64 << 0 | 1u64 << 1)
+      (AccountFlag::Initialized | AccountFlag::Market).bits()
     );
-    return Err(ProtocolError::InvalidAccountData);
+    return Err(ProtocolError::InvalidSerumDexMarketAccount);
   }
   Ok(())
 });

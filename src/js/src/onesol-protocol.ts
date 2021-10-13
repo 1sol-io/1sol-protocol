@@ -240,7 +240,7 @@ export class SerumDexMarketInfo {
         isWritable: true,
       },
       { pubkey: this.vaultSigner, isSigner: false, isWritable: false },
-      { pubkey: this.openOrders, isSigner: false, isWritable: false },
+      { pubkey: this.openOrders, isSigner: false, isWritable: true },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: this.programId, isSigner: false, isWritable: false },
     ];
@@ -723,10 +723,14 @@ export class OneSolProtocol {
   }): Promise<TransactionInstruction> {
     if (
       !(
-        (sourceMint.equals(step1.ammInfo.tokenMintA()) &&
-          destinationMint.equals(step2.ammInfo.tokenMintB())) ||
-        (sourceMint.equals(step1.ammInfo.tokenMintB()) &&
-          destinationMint.equals(step2.ammInfo.tokenMintA()))
+        [
+          step1.ammInfo.tokenMintA().toString(),
+          step1.ammInfo.tokenMintB().toString(),
+        ].includes(sourceMint.toString()) &&
+        [
+          step2.ammInfo.tokenMintA().toString(),
+          step2.ammInfo.tokenMintB().toString(),
+        ].includes(destinationMint.toString())
       )
     ) {
       throw new Error(`ammInfo error`);
@@ -736,6 +740,10 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
+      BufferLayout.u8("step1ExchangerType"),
+      BufferLayout.u8("step1AccountsCount"),
+      BufferLayout.u8("step2ExchangerType"),
+      BufferLayout.u8("step2AccountsCount"),
     ]);
 
     let dataMap: any = {
@@ -752,14 +760,18 @@ export class OneSolProtocol {
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
 
-    [step1, step2].forEach(({ ammInfo, stepInfo }) => {
+    [step1, step2].forEach(({ ammInfo, stepInfo }, i) => {
       keys.push(...ammInfo.toKeys());
       if (stepInfo instanceof TokenSwapInfo) {
         const swapKeys = stepInfo.toKeys();
         keys.push(...swapKeys);
+        dataMap[`step${i+1}ExchangerType`] = 0;
+        dataMap[`step${i+1}AccountsCount`] = swapKeys.length;
       } else if (stepInfo instanceof SerumDexMarketInfo) {
         const swapKeys = stepInfo.toKeys();
         keys.push(...swapKeys);
+        dataMap[`step${i+1}ExchangerType`] = 1;
+        dataMap[`step${i+1}AccountsCount`] = swapKeys.length;
       }
     });
 
@@ -801,7 +813,7 @@ export async function loadTokenSwapInfo(
   }
 
   const authority = await PublicKey.createProgramAddress(
-    [address.toBuffer()].concat(Buffer.from(tokenSwapData.bumpSeed)),
+    [address.toBuffer()].concat(Buffer.from([tokenSwapData.nonce])),
     programId
   );
 
@@ -862,7 +874,7 @@ export async function loadSerumDexMarket(
     programId
   );
 
-  const openOrders = extMarketDecoded.openOrders;
+  const openOrders = new PublicKey(extMarketDecoded.openOrders);
 
   return new SerumDexMarketInfo(
     pubkey,

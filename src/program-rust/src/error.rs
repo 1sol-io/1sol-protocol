@@ -156,6 +156,11 @@ pub enum ProtocolError {
   #[error("invalid source balance")]
   InvalidSourceBalance,
 
+  #[error("invalid spl-token-swap account")]
+  InvalidSplTokenSwapInfoAccount,
+
+  #[error("invalid serum-dex market account")]
+  InvalidSerumDexMarketAccount,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -210,6 +215,8 @@ impl PrintProgramError for ProtocolError {
       ProtocolError::Unreachable => msg!("Error: Unreachable"),
       ProtocolError::ReadableAccount => msg!("Error: ReadableAccount"),
       ProtocolError::InvalidSourceBalance => msg!("Error: InvalidSourceBalance"),
+      ProtocolError::InvalidSplTokenSwapInfoAccount => msg!("Error: InvalidSplTokenSwapInfoAccount"),
+      ProtocolError::InvalidSerumDexMarketAccount => msg!("Error: InvalidSerumDexMarketAccount"),
     }
   }
 }
