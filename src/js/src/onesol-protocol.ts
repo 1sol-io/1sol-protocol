@@ -761,7 +761,9 @@ export class OneSolProtocol {
     ];
 
     [step1, step2].forEach(({ ammInfo, stepInfo }, i) => {
-      keys.push(...ammInfo.toKeys());
+      if (i !== 0) {
+        keys.push(...ammInfo.toKeys());
+      }
       if (stepInfo instanceof TokenSwapInfo) {
         const swapKeys = stepInfo.toKeys();
         keys.push(...swapKeys);

@@ -10,4 +10,3 @@ pub enum SwapperType {
   SplTokenSwap,
   SerumDex,
 }
-

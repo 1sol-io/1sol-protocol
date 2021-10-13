@@ -1,19 +1,21 @@
 //! Error types
 
 use num_derive::FromPrimitive;
-use solana_program::{decode_error::DecodeError, msg, program_error::{PrintProgramError, ProgramError}};
+use solana_program::{
+  decode_error::DecodeError,
+  msg,
+  program_error::{PrintProgramError, ProgramError},
+};
 use thiserror::Error;
 
-
-
-/// OneSolResult 
+/// OneSolResult
 pub type ProtocolResult<T = ()> = Result<T, ProtocolError>;
 
 #[macro_export]
 macro_rules! check_unreachable {
-  () => {
-    {Err(ProtocolError::Unreachable) }
-  };
+  () => {{
+    Err(ProtocolError::Unreachable)
+  }};
 }
 
 // pub(crate) use check_unreachable;
@@ -136,7 +138,7 @@ pub enum ProtocolError {
   #[error("invalid signer account")]
   InvalidSignerAccount,
 
-  /// Invalid Account data 
+  /// Invalid Account data
   #[error("invalid account data")]
   InvalidAccountData,
 
@@ -173,7 +175,6 @@ impl<T> DecodeError<T> for ProtocolError {
   }
 }
 
-
 impl PrintProgramError for ProtocolError {
   fn print<E>(&self)
   where
@@ -202,7 +203,9 @@ impl PrintProgramError for ProtocolError {
       ProtocolError::BorrowAccountDataError => msg!("Error: BorrowAccountDataError"),
       ProtocolError::InvalidAuthority => msg!("Error: InvalidAuthority"),
       ProtocolError::InvalidTokenAccount => msg!("Error: InvalidTokenAccount"),
-      ProtocolError::InitOpenOrdersInstructionError => msg!("Error: InitOpenOrdersInstructionError"),
+      ProtocolError::InitOpenOrdersInstructionError => {
+        msg!("Error: InitOpenOrdersInstructionError")
+      }
       ProtocolError::InvokeError => msg!("Error: InvokeError"),
       ProtocolError::InvalidNonce => msg!("Error: InvalidNonce"),
       ProtocolError::InvalidTokenMint => msg!("Error: InvalidTokenMint"),
@@ -215,7 +218,9 @@ impl PrintProgramError for ProtocolError {
       ProtocolError::Unreachable => msg!("Error: Unreachable"),
       ProtocolError::ReadableAccount => msg!("Error: ReadableAccount"),
       ProtocolError::InvalidSourceBalance => msg!("Error: InvalidSourceBalance"),
-      ProtocolError::InvalidSplTokenSwapInfoAccount => msg!("Error: InvalidSplTokenSwapInfoAccount"),
+      ProtocolError::InvalidSplTokenSwapInfoAccount => {
+        msg!("Error: InvalidSplTokenSwapInfoAccount")
+      }
       ProtocolError::InvalidSerumDexMarketAccount => msg!("Error: InvalidSerumDexMarketAccount"),
     }
   }

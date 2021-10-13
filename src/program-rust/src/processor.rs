@@ -3,9 +3,9 @@
 use crate::{
   account_parser::{
     validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
-    TokenAccount, UserArgs,TokenMint,
+    TokenAccount, TokenMint, UserArgs,
   },
-  error::{ProtocolError},
+  error::ProtocolError,
   instruction::{
     ExchangeStep, ExchangerType, Initialize, OneSolInstruction, SwapInstruction,
     SwapTwoStepsInstruction,
@@ -13,7 +13,7 @@ use crate::{
   state::{AccountFlag, AmmInfo, DexMarketInfo, OutputData},
   swappers::{serum_dex_order, spl_token_swap},
 };
-use arrayref::{array_refs};
+use arrayref::array_refs;
 // use safe_transmute::to_bytes::transmute_one_to_bytes;
 use safe_transmute::to_bytes::transmute_to_bytes;
 use serum_dex::matching::Side as DexSide;
@@ -22,11 +22,11 @@ use solana_program::{
   entrypoint::ProgramResult,
   log::sol_log_compute_units,
   msg,
-  program::{invoke_signed},
+  program::{invoke, invoke_signed},
   program_error::ProgramError,
   pubkey::Pubkey,
 };
-use std::{convert::{identity}, num::NonZeroU64};
+use std::{convert::identity, num::NonZeroU64};
 // use std::convert::identity;
 
 /// Program state handler.
@@ -100,7 +100,7 @@ impl Processor {
     token_b_vault.check_owner(authority_info.key)?;
 
     if *token_a_mint.inner().key == *token_b_mint.inner().key {
-      return Err(ProtocolError::InvalidTokenMint.into())
+      return Err(ProtocolError::InvalidTokenMint.into());
     }
 
     let mut amm_info = AmmInfo::load_mut(onesol_amm_info_acc, false)?;
@@ -248,13 +248,18 @@ impl Processor {
       data.amount_in
     );
 
+    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
+    let signers = &[&authority_signature_seeds[..]];
+
     Self::process_step_tokenswap(
       program_id,
       // step,
       data,
       amm_source_token_acc,
       amm_destination_token_acc,
-      &amm_info_args,
+      amm_info_args.authority_acc_info,
+      Some(signers),
       &spl_token_program,
       other_accounts,
     )?;
@@ -367,12 +372,16 @@ impl Processor {
       data.amount_in
     );
 
+    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
+    let signers = &[&authority_signature_seeds[..]];
     Self::process_step_serumdex(
       program_id,
       data,
       amm_source_token_acc,
       amm_destination_token_acc,
-      &amm_info_args,
+      amm_info_args.authority_acc_info,
+      Some(signers),
       &spl_token_program,
       other_accounts,
     )?;
@@ -428,7 +437,7 @@ impl Processor {
     accounts: &[AccountInfo],
   ) -> ProgramResult {
     msg!("start process swap: two_steps");
-    let account_counts = 4 + 4 + data.step1.accounts_count + 4 + data.step2.accounts_count;
+    let account_counts = 4 + data.step1.accounts_count + 4 + data.step2.accounts_count;
     if accounts.len() < account_counts {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
@@ -445,16 +454,9 @@ impl Processor {
     }
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
-    let (step1_accounts, step2_accounts) = other_accounts.split_at(4 + data.step1.accounts_count);
+    let (step1_accounts, step2_accounts) = other_accounts.split_at(data.step1.accounts_count);
     // let mut steps = &[(data.step1, step1_accounts), (data.step2, step2_accounts)];
-    let user_source_token_mint = user_args.token_source_account.mint()?;
     // step1
-
-    let (step1_amm_info_args, step1_other_account) = {
-      let (amm_info_accounts, step_other_accounts) = step1_accounts.split_at(4);
-      let amm_info_args = AmmInfoArgs::with_parsed_args(program_id, amm_info_accounts)?;
-      (amm_info_args, step_other_accounts)
-    };
 
     let (step2_amm_info_args, step2_other_account) = {
       let (amm_info_accounts, step_other_accounts) = step2_accounts.split_at(4);
@@ -462,22 +464,22 @@ impl Processor {
       (amm_info_args, step_other_accounts)
     };
 
-    let (step1_source_token_account, step1_temp_destination_token_account) =
-      step1_amm_info_args.find_token_pair(&user_source_token_mint)?;
     let (step2_source_token_account, step2_destination_token_account) =
-      step2_amm_info_args.find_token_pair(&step1_temp_destination_token_account.mint()?)?;
+      if user_args.token_destination_account.mint()?
+        == step2_amm_info_args.token_b_account.mint()?
+      {
+        (
+          step2_amm_info_args.token_a_account,
+          step2_amm_info_args.token_b_account,
+        )
+      } else {
+        (
+          step2_amm_info_args.token_b_account,
+          step2_amm_info_args.token_a_account,
+        )
+      };
 
-    Self::token_transfer(
-      user_args.source_account_owner.pubkey(),
-      spl_token_program.inner(),
-      user_args.token_source_account.inner(),
-      step1_source_token_account.inner(),
-      user_args.source_account_owner.inner(),
-      step1_amm_info_args.nonce(),
-      data.amount_in.get(),
-    )?;
-    // transfer from user token_source_account to amm_source_token_account
-    let from_amount_before = step1_source_token_account.balance()?;
+    let from_amount_before = user_args.token_source_account.balance()?;
     let to_amount_before = step2_destination_token_account.balance()?;
     let step1_to_amount_before = step2_source_token_account.balance()?;
     msg!(
@@ -490,38 +492,48 @@ impl Processor {
     Self::process_step_auto(
       program_id,
       &data.step1,
-      SwapInstruction{
+      SwapInstruction {
         amount_in: data.amount_in,
         expect_amount_out: NonZeroU64::new(1).unwrap(),
         minimum_amount_out: NonZeroU64::new(1).unwrap(),
       },
-      step1_source_token_account,
-      step2_source_token_account,
-      &step1_amm_info_args,
+      &user_args.token_source_account,
+      &step2_source_token_account,
+      user_args.source_account_owner.inner(),
+      None,
       &spl_token_program,
-      &step1_other_account
+      &step1_accounts,
     )?;
-    let step1_to_amount = step2_source_token_account.balance()?.checked_sub(step1_to_amount_before).ok_or(ProtocolError::Unreachable)?;
-    msg!("step1 result: {}", step1_to_amount);
+    let step2_amount_in = step2_source_token_account
+      .balance()?
+      .checked_sub(step1_to_amount_before)
+      .ok_or(ProtocolError::Unreachable)?;
+    msg!("step2 amount_in: {}", step2_amount_in);
 
     // step2
+
+    let base_bytes = step2_amm_info_args.amm_info_key.to_bytes();
+    let authority_signature_seeds = [&base_bytes[..32], &[step2_amm_info_args.nonce()]];
+    let signers = &[&authority_signature_seeds[..]];
+
     Self::process_step_auto(
       program_id,
       &data.step2,
-      SwapInstruction{
-        amount_in: NonZeroU64::new(step1_to_amount).unwrap(),
+      SwapInstruction {
+        amount_in: NonZeroU64::new(step2_amount_in).unwrap(),
         expect_amount_out: data.expect_amount_out,
         minimum_amount_out: data.minimum_amount_out,
       },
-      step2_source_token_account,
-      step2_destination_token_account,
-      &step2_amm_info_args,
-      &spl_token_program, 
-      &step2_other_account
+      &step2_source_token_account,
+      &step2_destination_token_account,
+      &step2_amm_info_args.authority_acc_info,
+      Some(signers),
+      &spl_token_program,
+      &step2_other_account,
     )?;
 
-    let from_amount_after = step1_source_token_account.balance()?;
-    let to_amount_after = step2_source_token_account.balance()?;
+    let from_amount_after = user_args.token_source_account.balance()?;
+    let to_amount_after = step2_destination_token_account.balance()?;
     msg!(
       "from_amount_after: {}, to_amount_after: {}",
       from_amount_after,
@@ -571,7 +583,8 @@ impl Processor {
     data: SwapInstruction,
     source_token_account: &TokenAccount<'a, 'b>,
     destination_token_account: &TokenAccount<'a, 'b>,
-    amm_info_args: &AmmInfoArgs<'a, 'b>,
+    authority: &'a AccountInfo<'b>,
+    signers_seed: Option<&[&[&[u8]]]>,
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
@@ -582,7 +595,8 @@ impl Processor {
           &data,
           source_token_account,
           destination_token_account,
-          amm_info_args,
+          authority,
+          signers_seed,
           spl_token_program,
           accounts,
         )?;
@@ -593,7 +607,8 @@ impl Processor {
           &data,
           source_token_account,
           destination_token_account,
-          amm_info_args,
+          authority,
+          signers_seed,
           spl_token_program,
           accounts,
         )?;
@@ -610,7 +625,9 @@ impl Processor {
     data: &SwapInstruction,
     source_token_account: &TokenAccount<'a, 'b>,
     destination_token_account: &TokenAccount<'a, 'b>,
-    amm_info_args: &AmmInfoArgs<'a, 'b>,
+    authority: &'a AccountInfo<'b>,
+    // amm_info_args: Option<&'a AmmInfoArgs<'a, 'b>>,
+    signers_seed: Option<&[&[&[u8]]]>,
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
@@ -644,7 +661,8 @@ impl Processor {
     let mut swap_accounts = vec![
       spl_token_swap_args.swap_info.inner().clone(),
       spl_token_swap_args.authority_acc_info.clone(),
-      amm_info_args.authority_acc_info.clone(),
+      authority.clone(),
+      // amm_info_args.authority_acc_info.clone(),
       source_token_account.inner().clone(),
       pool_source_token_acc.inner().clone(),
       pool_destination_token_acc.inner().clone(),
@@ -674,7 +692,7 @@ impl Processor {
       spl_token_program.inner().key,
       spl_token_swap_args.swap_info.inner().key,
       spl_token_swap_args.authority_acc_info.key,
-      amm_info_args.authority_acc_info.key,
+      authority.key,
       source_token_account.inner().key,
       pool_source_token_acc.inner().key,
       pool_destination_token_acc.inner().key,
@@ -684,11 +702,19 @@ impl Processor {
       host_fee_account_key,
       instruction_data,
     )?;
-    let base_bytes = amm_info_args.amm_info_key.to_bytes();
-    let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
-    let signers = &[&authority_signature_seeds[..]];
     msg!("invoke spl-token-swap swap");
-    invoke_signed(&instruction, &swap_accounts[..], signers)?;
+
+    match signers_seed {
+      Some(signers) => {
+        invoke_signed(&instruction, &swap_accounts[..], signers)?;
+      }
+      None => {
+        if !authority.is_signer {
+          return Err(ProtocolError::InvalidAuthority.into());
+        }
+        invoke(&instruction, &swap_accounts)?;
+      }
+    }
     Ok(())
   }
 
@@ -699,10 +725,12 @@ impl Processor {
     data: &SwapInstruction,
     source_token_account: &TokenAccount<'a, 'b>,
     destination_token_account: &TokenAccount<'a, 'b>,
-    amm_info_args: &AmmInfoArgs<'a, 'b>,
+    authority: &'a AccountInfo<'b>,
+    signers_seed: Option<&[&[&[u8]]]>,
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
+   
     let dex_args = SerumDexArgs::with_parsed_args(accounts)?;
 
     let source_token_mint = source_token_account.mint()?;
@@ -714,9 +742,6 @@ impl Processor {
       DexSide::Bid => (source_token_account, destination_token_account),
       DexSide::Ask => (destination_token_account, source_token_account),
     };
-
-    // TODO maybe check coin_wallet_account pc_wallet_account
-    // TODO check open_order authority
 
     let orderbook = serum_dex_order::OrderbookClient {
       market: serum_dex_order::MarketAccounts {
@@ -732,13 +757,12 @@ impl Processor {
         vault_signer: dex_args.vault_signer_acc,
         coin_wallet: coin_wallet_account.inner(),
       },
-      authority: amm_info_args.authority_acc_info,
-      amm_info: amm_info_args.amm_info_key,
+      authority: authority,
       pc_wallet: pc_wallet_account.inner(),
       dex_program: dex_args.program_acc,
       token_program: spl_token_program.inner(),
       rent: dex_args.rent_sysvar_acc,
-      nonce: amm_info_args.nonce(),
+      signers_seed: signers_seed,
     };
     match side {
       DexSide::Bid => orderbook.buy(data.amount_in.get(), None)?,

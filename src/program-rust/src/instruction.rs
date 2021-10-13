@@ -1,10 +1,9 @@
 //! Instruction types
 
-use crate::error::{ProtocolError};
+use crate::error::ProtocolError;
 use arrayref::{array_ref, array_refs};
-use solana_program::{program_error::ProgramError};
+use solana_program::program_error::ProgramError;
 use std::num::NonZeroU64;
-
 
 /// ExchangerType
 #[derive(Clone, Debug, PartialEq, Copy)]
@@ -38,7 +37,8 @@ impl ExchangeStep {
     let arr_data = array_ref![input, 0, ExchangeStep::LEN];
     let (&[exchanger_type], &[accounts_count]) = array_refs![arr_data, 1, 1];
     Ok(Self {
-      exchanger_type: ExchangerType::from(exchanger_type).ok_or(ProgramError::InvalidInstructionData)?,
+      exchanger_type: ExchangerType::from(exchanger_type)
+        .ok_or(ProgramError::InvalidInstructionData)?,
       accounts_count: accounts_count as usize,
     })
   }
@@ -55,7 +55,7 @@ pub struct Initialize {
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub struct SwapTwoStepsInstruction {
   /// the amount to swap *from*
-  pub amount_in: NonZeroU64, 
+  pub amount_in: NonZeroU64,
   /// expect amount of tokens to swap
   pub expect_amount_out: NonZeroU64,
   /// Minimum amount of DESTINATION token to output, prevents excessive slippage
@@ -82,10 +82,10 @@ pub struct SwapInstruction {
 #[derive(Debug, PartialEq)]
 pub enum OneSolInstruction {
   /// Initialize Token pair
-  /// 
-  /// 0. `[writable, signer]` New 1solProtocol AmmInfo account to create. 
+  ///
+  /// 0. `[writable, signer]` New 1solProtocol AmmInfo account to create.
   /// 1. `[]` $authority derived from `create_program_address(&[1solProtocolAmmInfo account])`
-  /// 2. `[]` Owner account 
+  /// 2. `[]` Owner account
   /// 3. `[writable]` pc vault Account. Must be non zero, owned by 1sol.
   /// 4. `[writable]` pc_mint Account.
   /// 5. `[writable]` coin_vault Account.
@@ -94,7 +94,7 @@ pub enum OneSolInstruction {
   InitializeAmmInfo(Initialize),
 
   /// Create Dex Market
-  /// 
+  ///
   /// 0. `[writable, signer]` new DexMarket account to create.
   /// 1. `[]` $authority derived from `create_program_address(&[DexMarket account])`
   /// 2. `[writable]` AmmInfo account.
@@ -117,7 +117,7 @@ pub enum OneSolInstruction {
   ///   5. `[]` OneSolProtocol AmmInfo authority
   ///   6. `[writable]` OneSolProtocol AmmInfo token a account
   ///   7. `[writable]` OneSolProtocol AmmInfo token b account
-  ///   token_swap accounts 
+  ///   token_swap accounts
   ///   8. `[]` TokenSwap swap_info account
   ///   9. `[]` TokenSwap swap_info authority
   ///   10. `[writable]` TokenSwap token_A Account.
@@ -174,28 +174,22 @@ pub enum OneSolInstruction {
   ///       8. `[writable]`  serum-dex open_orders
   ///       9. `[]`  serum-dex rent_sysvar
   ///       10. `[]`  serum-dex serum_dex_program_id
-  /// 
+  ///
   ///   All Accounts:
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet)
   ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
   ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
   ///     3. '[]` Token program id
   ///   Step0
-  ///     0. `[writable]` OneSolProtocol AmmInfo1
-  ///     1. `[]` OneSolProtocol AmmInfo1 authority
-  ///     3. `[writable]` OneSolProtocol AmmInfo1 token a account
-  ///     4. `[writable]` OneSolProtocol AmmInfo1 token b account
-  ///     TokenSwap Accounts or SerumDex Accounts 
+  ///     TokenSwap Accounts or SerumDex Accounts
   ///   Step1
   ///     0. `[writable]` OneSolProtocol AmmInfo2
   ///     1. `[]` OneSolProtocol AmmInfo2 authority
   ///     2. `[writeable]` OneSolProtocol AmmInfo2 token a account
   ///     4. `[writeable]` OneSolProtocol AmmInfo2 token b account
-  ///     TokenSwap Accounts or SerumDex Accounts 
+  ///     TokenSwap Accounts or SerumDex Accounts
   SwapTwoSteps(SwapTwoStepsInstruction),
 }
-
-
 
 impl OneSolInstruction {
   /// Unpacks a byte buffer into a [OneSolInstruction](enum.OneSolInstruction.html).
@@ -223,7 +217,6 @@ impl Initialize {
 }
 
 impl SwapInstruction {
-
   const DATA_LEN: usize = 24;
 
   // size = 1 or 3
@@ -253,10 +246,9 @@ impl SwapInstruction {
 }
 
 impl SwapTwoStepsInstruction {
-
   const DATA_LEN: usize = 28;
 
-  /// u64, u64, u64, u8, 
+  /// u64, u64, u64, u8,
   fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
     if input.len() < SwapTwoStepsInstruction::DATA_LEN {
       return Err(ProtocolError::InvalidInput.into());
@@ -284,7 +276,6 @@ impl SwapTwoStepsInstruction {
     })
   }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -316,5 +307,4 @@ mod tests {
     assert_eq!(i.expect_amount_out.get(), expect_amount_out);
     assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
   }
-
 }

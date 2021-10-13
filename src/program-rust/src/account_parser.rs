@@ -1,15 +1,12 @@
-use std::{cell::RefMut};
+use std::cell::RefMut;
 
 use crate::{
   check_unreachable,
   error::{ProtocolError, ProtocolResult},
   state::AmmInfo,
 };
-use serum_dex::{
-  matching::Side as DexSide,
-  state::AccountFlag,
-};
 use arrayref::{array_ref, array_refs};
+use serum_dex::{matching::Side as DexSide, state::AccountFlag};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey};
 
 macro_rules! declare_validated_account_wrapper {
@@ -91,13 +88,21 @@ declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
   let data = account
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-  // SplTokenSwap info data_len should be 323
-  msg!("spl-tokenswap-info, data.len(): {}, is_initialized: {}", data.len(), data[0]);
   if data.len() != 324 {
+    msg!(
+      "spl-tokenswap-info, data.len(): {}, is_initialized: {}",
+      data.len(),
+      data[0]
+    );
     return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
   let is_initialized = data[0];
   if is_initialized != 1u8 {
+    msg!(
+      "spl-tokenswap-info, data.len(): {}, is_initialized: {}",
+      data.len(),
+      data[0]
+    );
     return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
   Ok(())

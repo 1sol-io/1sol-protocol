@@ -1,11 +1,12 @@
-use crate::error::{
-  ProtocolError,
-};
+use crate::error::ProtocolError;
 use arrayref::array_refs;
 use bytemuck::{cast_slice, from_bytes};
 use serum_dex::{instruction, matching::Side, state::MarketState};
 use solana_program::{
-  account_info::AccountInfo, entrypoint::ProgramResult, program::{invoke_signed}, pubkey::Pubkey,
+  account_info::AccountInfo,
+  entrypoint::ProgramResult,
+  program::{invoke, invoke_signed},
+  pubkey::Pubkey,
 };
 use std::num::NonZeroU64;
 
@@ -45,7 +46,7 @@ pub struct ExchangeRate {
 // Market accounts are the accounts used to place orders against the dex minus
 // common accounts, i.e., program ids, sysvars, and the `pc_wallet`.
 #[derive(Clone)]
-pub struct MarketAccounts<'a, 'info:'a> {
+pub struct MarketAccounts<'a, 'info: 'a> {
   pub market: &'a AccountInfo<'info>,
   pub open_orders: &'a AccountInfo<'info>,
   pub request_queue: &'a AccountInfo<'info>,
@@ -70,18 +71,17 @@ pub struct MarketAccounts<'a, 'info:'a> {
 }
 
 #[derive(Clone)]
-pub struct OrderbookClient<'a, 'info:'a> {
+pub struct OrderbookClient<'a, 'info: 'a> {
   pub market: MarketAccounts<'a, 'info>,
-  pub amm_info: &'a Pubkey,
   pub authority: &'a AccountInfo<'info>,
   pub pc_wallet: &'a AccountInfo<'info>,
   pub dex_program: &'a AccountInfo<'info>,
   pub token_program: &'a AccountInfo<'info>,
   pub rent: &'a AccountInfo<'info>,
-  pub nonce: u8,
+  pub signers_seed: Option<&'a [&'a [&'a [u8]]]>,
 }
 
-impl<'a, 'info:'a> OrderbookClient<'a, 'info> {
+impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
   // Executes the sell order portion of the swap, purchasing as much of the
   // quote currency as possible for the given `base_amount`.
   //
@@ -213,11 +213,10 @@ impl<'a, 'info:'a> OrderbookClient<'a, 'info> {
     )
     .map_err(|_| ProtocolError::InvalidDelegate)?;
 
-    let info_bytes = self.amm_info.to_bytes();
-    let authority_signature_seeds = [&info_bytes[..32], &[self.nonce]];
-    let signers = &[&authority_signature_seeds[..]];
-
-    invoke_signed(&instruction, &accounts[..], signers)
+    match self.signers_seed {
+      Some(signers) => invoke_signed(&instruction, &accounts[..], signers),
+      None => invoke(&instruction, &accounts[..]),
+    }
   }
 
   pub fn settle(&self, referral: Option<AccountInfo<'info>>) -> ProgramResult {
@@ -252,10 +251,10 @@ impl<'a, 'info:'a> OrderbookClient<'a, 'info> {
       referral_key,
       self.market.vault_signer.key,
     )?;
-    let info_bytes = self.amm_info.to_bytes();
-    let authority_signature_seeds = [&info_bytes[..32], &[self.nonce]];
-    let signers = &[&authority_signature_seeds[..]];
-    invoke_signed(&instruction, &accounts[..], signers)
+    match self.signers_seed {
+      Some(signers) => invoke_signed(&instruction, &accounts[..], signers),
+      None => invoke(&instruction, &accounts[..]),
+    }
   }
 }
 
@@ -309,17 +308,13 @@ pub fn invoke_init_open_orders<'a>(
   market: &AccountInfo<'a>,
   rent: &AccountInfo<'a>,
   nonce: u8,
-) -> Result<(), ProtocolError>{
+) -> Result<(), ProtocolError> {
   let info_bytes = amm_info_key.to_bytes();
   let authority_signature_seeds = [&info_bytes[..32], &[nonce]];
   let signers = &[&authority_signature_seeds[..]];
 
-  let ix = instruction::init_open_orders(
-    program_id,
-    open_orders.key,
-    authority.key,
-    market.key,
-  ).map_err(|_| ProtocolError::InitOpenOrdersInstructionError)?;
+  let ix = instruction::init_open_orders(program_id, open_orders.key, authority.key, market.key)
+    .map_err(|_| ProtocolError::InitOpenOrdersInstructionError)?;
   invoke_signed(
     &ix,
     &[
@@ -329,6 +324,6 @@ pub fn invoke_init_open_orders<'a>(
       rent.clone(),
     ],
     signers,
-  ).map_err(|_|ProtocolError::InvokeError)
-
+  )
+  .map_err(|_| ProtocolError::InvokeError)
 }

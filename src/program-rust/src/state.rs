@@ -3,11 +3,7 @@ use crate::error::ProtocolError;
 use bytemuck::{cast_slice_mut, from_bytes_mut, Pod, Zeroable};
 use enumflags2::{bitflags, BitFlags};
 use safe_transmute::{self, trivial::TriviallyTransmutable};
-use solana_program::{
-  account_info::AccountInfo,
-  program_error::ProgramError,
-  pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::cell::RefMut;
 
 /// AccountFlag
@@ -54,7 +50,7 @@ impl OutputData {
       token_a2b_fee: 0u64,
       token_b_in_amount: 0u128,
       token_a_out_amount: 0u128,
-      token_b2a_fee:0u64,
+      token_b2a_fee: 0u64,
     }
   }
 }
