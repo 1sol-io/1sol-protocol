@@ -296,7 +296,7 @@ export class AmmInfo {
     const data = AmmInfoLayout.decode(account.data);
 
     const authority = await PublicKey.createProgramAddress(
-      [pubkey.toBuffer()].concat(Buffer.from(data.nonce)),
+      [pubkey.toBuffer()].concat(Buffer.from([data.nonce])),
       account.owner
     );
     return new AmmInfo(pubkey, account.owner, authority, data);
