@@ -730,7 +730,6 @@ impl Processor {
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
-   
     let dex_args = SerumDexArgs::with_parsed_args(accounts)?;
 
     let source_token_mint = source_token_account.mint()?;
@@ -764,6 +763,7 @@ impl Processor {
       rent: dex_args.rent_sysvar_acc,
       signers_seed: signers_seed,
     };
+    // orderbook.cancel_order(side)?;
     match side {
       DexSide::Bid => orderbook.buy(data.amount_in.get(), None)?,
       DexSide::Ask => orderbook.sell(data.amount_in.get(), None)?,

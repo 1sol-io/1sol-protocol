@@ -1183,7 +1183,7 @@ checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
 
 [[package]]
 name = "onesol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrayref",
  "bytemuck",
@@ -1591,9 +1591,9 @@ dependencies = [
 
 [[package]]
 name = "serum_dex"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dafc59d6c9502642898caafe8879ff7383c811cb0d6ca3a9e9b96feba9955465"
+checksum = "02705854bae4622e552346c8edd43ab90c7425da35d63d2c689f39238f8d8b25"
 dependencies = [
  "arrayref",
  "bincode",
