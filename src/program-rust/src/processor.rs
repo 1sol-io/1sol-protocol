@@ -3,7 +3,7 @@
 use crate::{
   account_parser::{
     validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
-    TokenAccount, TokenMint, UserArgs,
+    StableSwapArgs, TokenAccount, TokenMint, UserArgs,
   },
   error::ProtocolError,
   instruction::{
@@ -52,6 +52,10 @@ impl Processor {
       OneSolInstruction::InitDexMarketOpenOrders(data) => {
         msg!("Instruction: Initialize Dex Market Open Orders");
         Self::process_initialize_dex_mark_open_orders(program_id, &data, accounts)
+      }
+      OneSolInstruction::SwapStableSwap(data) => {
+        msg!("Instruction: Swap StableSwap");
+        Self::process_swap_stableswap(program_id, &data, accounts)
       }
       OneSolInstruction::SwapTwoSteps(data) => {
         msg!("Instruction: Swap Two Steps");
@@ -253,6 +257,125 @@ impl Processor {
     let signers = &[&authority_signature_seeds[..]];
 
     Self::process_step_tokenswap(
+      program_id,
+      // step,
+      data,
+      amm_source_token_acc,
+      amm_destination_token_acc,
+      amm_info_args.authority_acc_info,
+      Some(signers),
+      &spl_token_program,
+      other_accounts,
+    )?;
+    let from_amount_after = amm_source_token_acc.balance()?;
+    let to_amount_after = amm_destination_token_acc.balance()?;
+    msg!(
+      "from_amount_after: {}, to_amount_after: {}",
+      from_amount_after,
+      to_amount_after
+    );
+
+    let from_amount_changed = from_amount_before.checked_sub(from_amount_after).unwrap();
+    let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
+    msg!("from_amount changed: {}", from_amount_changed);
+    msg!(
+      "result_with_fee: {}, expect: {}, minimum: {}",
+      to_amount_include_fee,
+      data.expect_amount_out,
+      data.minimum_amount_out,
+    );
+    if to_amount_include_fee == 0 {
+      return Err(ProtocolError::DexSwapError.into());
+    }
+
+    if to_amount_include_fee < data.minimum_amount_out.get() {
+      return Err(ProtocolError::ExceededSlippage.into());
+    }
+    let fee = to_amount_include_fee
+      .checked_sub(data.expect_amount_out.get())
+      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
+      .unwrap_or(0);
+    let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
+
+    // Transfer OnesolB -> AliceB
+    msg!("transfer to user destination, amount: {}", to_amount);
+    sol_log_compute_units();
+    Self::token_transfer(
+      amm_info_args.amm_info_key,
+      spl_token_program.inner(),
+      amm_destination_token_acc.inner(),
+      user_args.token_destination_account.inner(),
+      amm_info_args.authority_acc_info,
+      amm_info_args.nonce(),
+      to_amount,
+    )?;
+    // TODO close native_wrap account
+    Ok(())
+  }
+
+  /// Processes an Swap through Saber StableSwap.
+  pub fn process_swap_stableswap(
+    program_id: &Pubkey,
+    data: &SwapInstruction,
+    accounts: &[AccountInfo],
+  ) -> ProgramResult {
+    const MIN_ACCOUNTS: usize = 15;
+    if accounts.len() < MIN_ACCOUNTS {
+      return Err(ProtocolError::InvalidAccountsLength.into());
+    }
+    let (fixed_accounts, other_accounts) = array_refs![accounts, 8; ..;];
+
+    let (user_accounts, &[ref spl_token_program_acc], amm_info_accounts) =
+      array_refs![fixed_accounts, 3, 1, 4];
+
+    let user_args = UserArgs::with_parsed_args(user_accounts)?;
+
+    let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
+    let amm_info_args = AmmInfoArgs::with_parsed_args(program_id, amm_info_accounts)?;
+
+    msg!(
+      "source_token_account amount: {}",
+      user_args.token_source_account.balance()?,
+    );
+
+    let user_source_token_mint = user_args.token_source_account.mint()?;
+    let user_destination_token_mint = user_args.token_destination_account.mint()?;
+
+    let (amm_source_token_acc, amm_destination_token_acc) =
+      amm_info_args.find_token_pair(&user_source_token_mint)?;
+
+    if amm_source_token_acc.mint()? != user_source_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if amm_destination_token_acc.mint()? != user_destination_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+
+    // transfer from user token_source_account to amm_source_token_account
+    Self::token_transfer(
+      amm_info_args.amm_info_key,
+      spl_token_program.inner(),
+      user_args.token_source_account.inner(),
+      amm_source_token_acc.inner(),
+      user_args.source_account_owner.inner(),
+      amm_info_args.nonce(),
+      data.amount_in.get(),
+    )?;
+
+    let from_amount_before = amm_source_token_acc.balance()?;
+    let to_amount_before = amm_destination_token_acc.balance()?;
+    msg!(
+      "from_amount_before: {}, to_amount_before: {}, amount_in: {}",
+      from_amount_before,
+      to_amount_before,
+      data.amount_in
+    );
+
+    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
+    let signers = &[&authority_signature_seeds[..]];
+
+    Self::process_step_stableswap(
       program_id,
       // step,
       data,
@@ -613,6 +736,18 @@ impl Processor {
           accounts,
         )?;
       }
+      ExchangerType::StableSwap => {
+        Self::process_step_stableswap(
+          program_id,
+          &data,
+          source_token_account,
+          destination_token_account,
+          authority,
+          signers_seed,
+          spl_token_program,
+          accounts,
+        )?;
+      }
     }
     Ok(())
   }
@@ -621,12 +756,10 @@ impl Processor {
   #[allow(clippy::too_many_arguments, unused_variables)]
   fn process_step_tokenswap<'a, 'b: 'a>(
     program_id: &Pubkey,
-    // step: &ExchangeStep,
     data: &SwapInstruction,
     source_token_account: &TokenAccount<'a, 'b>,
     destination_token_account: &TokenAccount<'a, 'b>,
     authority: &'a AccountInfo<'b>,
-    // amm_info_args: Option<&'a AmmInfoArgs<'a, 'b>>,
     signers_seed: Option<&[&[&[u8]]]>,
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
@@ -721,7 +854,6 @@ impl Processor {
   #[allow(clippy::too_many_arguments, unused_variables)]
   fn process_step_serumdex<'a, 'b: 'a>(
     program_id: &Pubkey,
-    // step: &ExchangeStep,
     data: &SwapInstruction,
     source_token_account: &TokenAccount<'a, 'b>,
     destination_token_account: &TokenAccount<'a, 'b>,
@@ -769,6 +901,88 @@ impl Processor {
       DexSide::Ask => orderbook.sell(data.amount_in.get(), None)?,
     }
     orderbook.settle(None)?;
+    Ok(())
+  }
+
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments, unused_variables)]
+  fn process_step_stableswap<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    data: &SwapInstruction,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    authority: &'a AccountInfo<'b>,
+    signers_seed: Option<&[&[&[u8]]]>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    let swap_args = StableSwapArgs::with_parsed_args(accounts)?;
+    let swap_amount_in = data.amount_in;
+    let swap_minimum_amount_out = data.minimum_amount_out;
+    msg!(
+      "swap using token-swap, amount_in: {}, minimum_amount_out: {}, expect_amount_out: {}",
+      data.amount_in,
+      data.minimum_amount_out,
+      data.expect_amount_out,
+    );
+
+    let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+
+    if source_token_account.balance()? < data.amount_in.get() {
+      return Err(ProtocolError::InvalidSourceBalance.into());
+    }
+
+    let (swap_source_token_acc, swap_destination_token_acc) =
+      swap_args.find_token_pair(&source_token_mint)?;
+
+    if swap_source_token_acc.mint()? != source_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if swap_destination_token_acc.mint()? != destination_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+
+    let swap_accounts = vec![
+      swap_args.swap_info.inner().clone(),
+      swap_args.authority_acc.clone(),
+      authority.clone(),
+      source_token_account.inner().clone(),
+      swap_source_token_acc.inner().clone(),
+      swap_destination_token_acc.inner().clone(),
+      destination_token_account.inner().clone(),
+      swap_args.admin_fee_acc.clone(),
+      spl_token_program.inner().clone(),
+      swap_args.clock_sysvar_acc.inner().clone(),
+    ];
+
+    let instruction = stable_swap_client::instruction::swap(
+      spl_token_program.inner().key,
+      swap_args.swap_info.inner().key,
+      swap_args.authority_acc.key,
+      authority.key,
+      source_token_account.inner().key,
+      swap_source_token_acc.inner().key,
+      swap_destination_token_acc.inner().key,
+      destination_token_account.inner().key,
+      swap_args.admin_fee_acc.key,
+      swap_amount_in.get(),
+      swap_minimum_amount_out.get(),
+    )?;
+
+    msg!("invoke saber-stableswap swap");
+
+    match signers_seed {
+      Some(signers) => {
+        invoke_signed(&instruction, &swap_accounts[..], signers)?;
+      }
+      None => {
+        if !authority.is_signer {
+          return Err(ProtocolError::InvalidAuthority.into());
+        }
+        invoke(&instruction, &swap_accounts)?;
+      }
+    }
     Ok(())
   }
 
