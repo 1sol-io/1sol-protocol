@@ -916,6 +916,7 @@ impl Processor {
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
+    sol_log_compute_units();
     let swap_args = StableSwapArgs::with_parsed_args(accounts)?;
     let swap_amount_in = data.amount_in;
     let swap_minimum_amount_out = data.minimum_amount_out;
@@ -972,6 +973,7 @@ impl Processor {
 
     msg!("invoke saber-stableswap swap");
 
+    sol_log_compute_units();
     match signers_seed {
       Some(signers) => {
         invoke_signed(&instruction, &swap_accounts[..], signers)?;
@@ -983,6 +985,7 @@ impl Processor {
         invoke(&instruction, &swap_accounts)?;
       }
     }
+    sol_log_compute_units();
     Ok(())
   }
 

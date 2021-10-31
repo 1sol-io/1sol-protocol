@@ -9,7 +9,7 @@
     "clean:program-rust": "cargo clean --manifest-path=./src/program-rust/Cargo.toml",
     "test:program-rust": "cargo test-bpf --manifest-path=./src/program-rust/Cargo.toml",
     "rustfmt:program-rust": "pushd src/program-rust && cargo fmt --all && popd",
-    "deploy:program-rust": "solana program deploy ./dist/program/onesol.so",
+    "deploy:program-rust": "solana program deploy ./dist/program/onesol_protocol.so",
     "pretty": "prettier --write '{,src/**/}*.ts'",
     "update:program_rust": "cargo update --manifest-path=src/program-rust/Cargo.toml",
     "cluster:localhost": "cp cluster-localhost.env .env",
@@ -33,6 +33,7 @@
     "buffer-layout": "^1.2.2"
   },
   "devDependencies": {
+    "@saberhq/stableswap-sdk": "^1.5.2",
     "@project-serum/serum": "0.13.54",
     "@solana/spl-token": "0.1.4",
     "@solana/spl-token-swap": "0.1.0",

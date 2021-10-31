@@ -155,7 +155,7 @@ pub enum OneSolInstruction {
   SwapSerumDex(SwapInstruction),
 
   /// Swap tokens through Saber StableSwap
-  /// 
+  ///
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
   ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
   ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.

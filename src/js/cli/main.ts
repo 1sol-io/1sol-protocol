@@ -1,5 +1,5 @@
 import {
-  loadAllAmmInfos
+  loadAllAmmInfos,
 } from './swap-test';
 
 export async function main() {

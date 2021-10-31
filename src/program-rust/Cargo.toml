@@ -1,5 +1,5 @@
 [package]
-name = "onesol"
+name = "onesol-protocol"
 version = "0.3.0"
 authors = ["croath <croathliu@gmail.com>"]
 edition = "2018"

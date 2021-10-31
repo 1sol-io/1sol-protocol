@@ -145,8 +145,6 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
   Ok(())
 });
 
-
-
 #[allow(unused)]
 fn unpack_coption_key(src: &[u8; 36]) -> ProtocolResult<Option<Pubkey>> {
   let (tag, body) = array_refs![src, 4, 32];
@@ -501,11 +499,7 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
   }
 }
 
-
 declare_validated_account_wrapper!(StableSwapInfo, |account: &AccountInfo| {
-  if !account.is_writable {
-    return Err(ProtocolError::ReadableAccount);
-  }
   let data = account
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
@@ -514,23 +508,23 @@ declare_validated_account_wrapper!(StableSwapInfo, |account: &AccountInfo| {
   }
   let is_initialized = data[0];
   if is_initialized != 1u8 {
-    return Err(ProtocolError::InvalidStableSwapAccountState)
+    return Err(ProtocolError::InvalidStableSwapAccountState);
   }
   let is_paused = data[1];
   if is_paused == 1u8 {
-    return Err(ProtocolError::InvalidStableSwapAccountState)
+    return Err(ProtocolError::InvalidStableSwapAccountState);
   }
   Ok(())
 });
 
 #[allow(dead_code)]
-impl <'a, 'b:'a> StableSwapInfo<'a, 'b> {
+impl<'a, 'b: 'a> StableSwapInfo<'a, 'b> {
   pub fn token_a(self) -> ProtocolResult<Pubkey> {
     let data = self
       .inner()
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-    Ok(Pubkey::new_from_array(*array_ref![data, 75, 32]))
+    Ok(Pubkey::new_from_array(*array_ref![data, 107, 32]))
   }
 
   pub fn token_b(self) -> ProtocolResult<Pubkey> {
@@ -538,7 +532,7 @@ impl <'a, 'b:'a> StableSwapInfo<'a, 'b> {
       .inner()
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-    Ok(Pubkey::new_from_array(*array_ref![data, 107, 32]))
+    Ok(Pubkey::new_from_array(*array_ref![data, 139, 32]))
   }
 
   pub fn token_a_mint(self) -> ProtocolResult<Pubkey> {
@@ -582,7 +576,7 @@ impl <'a, 'b:'a> StableSwapInfo<'a, 'b> {
 }
 
 #[derive(Copy, Clone)]
-pub struct StableSwapArgs<'a, 'b:'a> {
+pub struct StableSwapArgs<'a, 'b: 'a> {
   pub swap_info: StableSwapInfo<'a, 'b>,
   pub authority_acc: &'a AccountInfo<'b>,
   pub token_a: TokenAccount<'a, 'b>,
@@ -592,7 +586,7 @@ pub struct StableSwapArgs<'a, 'b:'a> {
   pub program_acc: &'a AccountInfo<'b>,
 }
 
-impl <'a, 'b:'a> StableSwapArgs<'a, 'b> {
+impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
   pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
     const MIN_ACCOUNTS: usize = 7;
     if accounts.len() != MIN_ACCOUNTS {
@@ -613,14 +607,21 @@ impl <'a, 'b:'a> StableSwapArgs<'a, 'b> {
     if swap_info.token_a()? != *token_a_acc.key {
       return Err(ProtocolError::InvalidTokenAccount);
     }
-    if swap_info.token_b()? != *token_a_acc.key {
+    if swap_info.token_b()? != *token_b_acc.key {
       return Err(ProtocolError::InvalidTokenAccount);
     }
-    if !(swap_info.admin_fee_key_a()? == *admin_fee_acc.key || swap_info.admin_fee_key_b()? == *admin_fee_acc.key) {
+    if !(swap_info.admin_fee_key_a()? == *admin_fee_acc.key
+      || swap_info.admin_fee_key_b()? == *admin_fee_acc.key)
+    {
       return Err(ProtocolError::InvalidStableSwapAccount);
     }
 
-    validate_authority_pubkey(authority_acc.key, program_acc.key, swap_info_acc.key, swap_info.nonce()?)?;
+    validate_authority_pubkey(
+      authority_acc.key,
+      program_acc.key,
+      swap_info_acc.key,
+      swap_info.nonce()?,
+    )?;
 
     Ok(StableSwapArgs {
       swap_info,
