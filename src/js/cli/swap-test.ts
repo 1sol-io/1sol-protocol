@@ -29,6 +29,9 @@ import {newAccountWithLamports} from './util/new-account-with-lamports';
 import {envConfig} from './util/url';
 import {sleep} from './util/sleep';
 import { BN } from 'bn.js';
+import {
+  StableSwap
+} from "@saberhq/stableswap-sdk"
 
 const tokenSwapProgramPubKey: PublicKey = new PublicKey(
   envConfig.splTokenSwapProgramId,
@@ -67,4 +70,10 @@ export async function loadAllAmmInfos() {
       program_id: ammInfo.programId.toBase58(),
     }));
   });
+}
+
+export async function loadSaberStableSwap(address: PublicKey) {
+  const connection = new Connection(clusterApiUrl("devnet"), "recent");
+  const swapInfo = await StableSwap.load(connection, address);
+  console.log(`feeA: ${swapInfo.state.tokenA.adminFeeAccount}, feeB: ${swapInfo.state.tokenB.adminFeeAccount}`);
 }

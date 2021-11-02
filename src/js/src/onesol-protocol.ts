@@ -3,9 +3,10 @@ import BN, { min } from "bn.js";
 import bs58 from "bs58";
 import { Buffer } from "buffer";
 import * as BufferLayout from "buffer-layout";
-import type {
+import {
   AccountInfo,
   Connection,
+  SYSVAR_CLOCK_PUBKEY,
   TransactionSignature,
 } from "@solana/web3.js";
 import {
@@ -19,13 +20,18 @@ import {
   TransactionInstruction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import { Market, OpenOrders } from "@project-serum/serum";
+import { Market } from "@project-serum/serum";
 import { TokenSwapLayout } from "@solana/spl-token-swap";
 import {
   MintInfo as TokenMint,
   MintLayout as TokenMintLayout,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
+import {
+  StableSwapLayout,
+  StableSwap,
+  SWAP_PROGRAM_ID as STABLE_SWAP_PROGRAM_ID,
+} from "@saberhq/stableswap-sdk";
 
 export const ONESOL_PROTOCOL_PROGRAM_ID: PublicKey = new PublicKey(
   "9Bj8zgNWT6UaNcXMgzMFrnH5Z13nQ6vFkRNxP743zZyr"
@@ -244,6 +250,52 @@ export class SerumDexMarketInfo {
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: this.programId, isSigner: false, isWritable: false },
     ];
+    return keys;
+  }
+}
+
+export class SaberStableSwapInfo {
+  constructor(
+    private programId: PublicKey,
+    private swapInfo: PublicKey,
+    private authority: PublicKey,
+    private tokenAccountA: PublicKey,
+    private mintA: PublicKey,
+    private adminFeeAccountA: PublicKey,
+    private tokenAccountB: PublicKey,
+    private mintB: PublicKey,
+    private adminFeeAccountB: PublicKey,
+  ) {
+    this.programId = programId;
+    this.swapInfo = swapInfo;
+    this.authority = authority;
+    this.tokenAccountA = tokenAccountA;
+    this.tokenAccountB = tokenAccountB;
+    this.adminFeeAccountA = adminFeeAccountA;
+    this.adminFeeAccountB = adminFeeAccountB;
+  }
+
+  toKeys(sourceMint: PublicKey): Array<AccountMeta> {
+    const keys = [
+      { pubkey: this.swapInfo, isSigner: false, isWritable: false },
+      { pubkey: this.authority, isSigner: false, isWritable: false },
+      { pubkey: this.tokenAccountA, isSigner: false, isWritable: true},
+      { pubkey: this.tokenAccountB, isSigner: false, isWritable: true},
+    ];
+
+    if (sourceMint.equals(this.mintA)) {
+      keys.push(
+        {pubkey: this.adminFeeAccountB, isSigner: false, isWritable: true},
+      );
+    } else {
+      keys.push(
+        {pubkey: this.adminFeeAccountA, isSigner: false, isWritable: true},
+      );
+    }
+    keys.push(
+      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false},
+      { pubkey: this.programId, isSigner: false, isWritable: false},
+    );
     return keys;
   }
 }
@@ -523,6 +575,120 @@ export class OneSolProtocol {
     });
   }
 
+  async createSwapBySaberStableSwapInstruction(
+    {
+      fromTokenAccountKey,
+      toTokenAccountKey,
+      fromMintKey,
+      toMintKey,
+      userTransferAuthority,
+      ammInfo,
+      amountIn,
+      expectAmountOut,
+      minimumAmountOut,
+      stableSwapInfo,
+    }: {
+      fromTokenAccountKey: PublicKey;
+      toTokenAccountKey: PublicKey;
+      fromMintKey: PublicKey;
+      toMintKey: PublicKey;
+      userTransferAuthority: PublicKey;
+      ammInfo: AmmInfo;
+      amountIn: Numberu64;
+      expectAmountOut: Numberu64;
+      minimumAmountOut: Numberu64;
+      stableSwapInfo: SaberStableSwapInfo;
+    },
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>
+  ): Promise<void> {
+    instructions.push(
+      await OneSolProtocol.makeSwapBySaberStableSwapInstruction({
+        ammInfo: ammInfo,
+        sourceTokenKey: fromTokenAccountKey,
+        sourceMint: fromMintKey,
+        destinationTokenKey: toTokenAccountKey,
+        destinationMint: toMintKey,
+        transferAuthority: userTransferAuthority,
+        tokenProgramId: this.tokenProgramId,
+        stableSwapInfo: stableSwapInfo,
+        amountIn: amountIn,
+        expectAmountOut: expectAmountOut,
+        minimumAmountOut: minimumAmountOut,
+      })
+    );
+  }
+
+  static async makeSwapBySaberStableSwapInstruction({
+    ammInfo,
+    sourceTokenKey,
+    sourceMint,
+    destinationTokenKey,
+    destinationMint,
+    transferAuthority,
+    tokenProgramId,
+    stableSwapInfo,
+    amountIn,
+    expectAmountOut,
+    minimumAmountOut,
+  }: {
+    ammInfo: AmmInfo;
+    sourceTokenKey: PublicKey;
+    sourceMint: PublicKey;
+    destinationTokenKey: PublicKey;
+    destinationMint: PublicKey;
+    transferAuthority: PublicKey;
+    tokenProgramId: PublicKey;
+    stableSwapInfo: SaberStableSwapInfo;
+    amountIn: Numberu64;
+    expectAmountOut: Numberu64;
+    minimumAmountOut: Numberu64;
+  }): Promise<TransactionInstruction> {
+    if (
+      !(
+        (sourceMint.equals(ammInfo.tokenMintA()) &&
+          destinationMint.equals(ammInfo.tokenMintB())) ||
+        (sourceMint.equals(ammInfo.tokenMintB()) &&
+          destinationMint.equals(ammInfo.tokenMintA()))
+      )
+    ) {
+      throw new Error(`ammInfo(${ammInfo.pubkey}) error`);
+    }
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+      uint64("amountIn"),
+      uint64("expectAmountOut"),
+      uint64("minimumAmountOut"),
+    ]);
+
+    let dataMap: any = {
+      instruction: 6, // Swap instruction
+      amountIn: amountIn.toBuffer(),
+      expectAmountOut: expectAmountOut.toBuffer(),
+      minimumAmountOut: minimumAmountOut.toBuffer(),
+    };
+
+    const keys = [
+      { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
+      { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
+      { pubkey: transferAuthority, isSigner: true, isWritable: false },
+      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
+    ];
+    keys.push(...ammInfo.toKeys());
+    const swapKeys = stableSwapInfo.toKeys(sourceMint);
+    keys.push(...swapKeys);
+
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(dataMap, data);
+
+    return new TransactionInstruction({
+      keys,
+      programId: ammInfo.programId,
+      data,
+    });
+  }
+
+
   async createSwapBySerumDexInstruction(
     {
       fromTokenAccountKey,
@@ -660,11 +826,11 @@ export class OneSolProtocol {
       minimumAmountOut: Numberu64;
       step1: {
         ammInfo: AmmInfo;
-        stepInfo: TokenSwapInfo | SerumDexMarketInfo;
+        stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
       };
       step2: {
         ammInfo: AmmInfo;
-        stepInfo: TokenSwapInfo | SerumDexMarketInfo;
+        stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
       };
     },
     instructions: Array<TransactionInstruction>,
@@ -710,11 +876,11 @@ export class OneSolProtocol {
     tokenProgramId: PublicKey;
     step1: {
       ammInfo: AmmInfo;
-      stepInfo: TokenSwapInfo | SerumDexMarketInfo;
+      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
     };
     step2: {
       ammInfo: AmmInfo;
-      stepInfo: TokenSwapInfo | SerumDexMarketInfo;
+      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
     };
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
@@ -764,6 +930,16 @@ export class OneSolProtocol {
       if (i !== 0) {
         keys.push(...ammInfo.toKeys());
       }
+      let stepSourceMint;
+      if (i === 0) {
+        stepSourceMint = sourceMint;
+      } else {
+        if (ammInfo.tokenMintA().equals(destinationMint)) {
+          stepSourceMint = ammInfo.tokenMintB();
+        } else {
+          stepSourceMint = ammInfo.tokenMintA();
+        }
+      }
       if (stepInfo instanceof TokenSwapInfo) {
         const swapKeys = stepInfo.toKeys();
         keys.push(...swapKeys);
@@ -773,6 +949,11 @@ export class OneSolProtocol {
         const swapKeys = stepInfo.toKeys();
         keys.push(...swapKeys);
         dataMap[`step${i+1}ExchangerType`] = 1;
+        dataMap[`step${i+1}AccountsCount`] = swapKeys.length;
+      } else if (stepInfo instanceof SaberStableSwapInfo) {
+        const swapKeys = stepInfo.toKeys(stepSourceMint);
+        keys.push(...swapKeys);
+        dataMap[`step${i+1}ExchangerType`] = 2;
         dataMap[`step${i+1}AccountsCount`] = swapKeys.length;
       }
     });
@@ -889,5 +1070,49 @@ export async function loadSerumDexMarket(
     vaultSigner,
     openOrders,
     programId
+  );
+}
+
+export async function loadSaberStableSwap(
+  {
+    connection,
+    address,
+    programId = STABLE_SWAP_PROGRAM_ID,
+  }: {
+    connection: Connection;
+    address: PublicKey,
+    programId: PublicKey,
+  }
+): Promise<SaberStableSwapInfo> {
+
+  const data = await loadAccount(connection, address, programId);
+  const stableSwapData = StableSwapLayout.decode(data);
+
+  if (!stableSwapData.isInitialized || stableSwapData.isPaused) {
+    throw new Error(`Invalid token swap state`);
+  }
+
+  const authority = await PublicKey.createProgramAddress(
+    [address.toBuffer()].concat(Buffer.from([stableSwapData.nonce])),
+    programId
+  );
+
+  const tokenAccountA = new PublicKey(stableSwapData.tokenAccountA);
+  const mintA = new PublicKey(stableSwapData.mintA);
+  const adminFeeAccountA = new PublicKey(stableSwapData.adminFeeAccountA);
+  const tokenAccountB = new PublicKey(stableSwapData.tokenAccountB);
+  const mintB = new PublicKey(stableSwapData.mintB);
+  const adminFeeAccountB = new PublicKey(stableSwapData.adminFeeAccountB);
+
+  return new SaberStableSwapInfo(
+    programId,
+    address,
+    authority,
+    tokenAccountA,
+    mintA,
+    adminFeeAccountA,
+    tokenAccountB,
+    mintB,
+    adminFeeAccountB
   );
 }

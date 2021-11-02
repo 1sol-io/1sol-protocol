@@ -7,7 +7,7 @@ use crate::{
 };
 use arrayref::{array_ref, array_refs};
 use serum_dex::{matching::Side as DexSide, state::AccountFlag};
-use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
 
 macro_rules! declare_validated_account_wrapper {
   ($WrapperT:ident, $validate:expr $(, $a:ident : $t:ty)*) => {
@@ -84,6 +84,13 @@ declare_validated_account_wrapper!(SignerAccount, |account: &AccountInfo| {
   Ok(())
 });
 
+declare_validated_account_wrapper!(SysClockAccount, |account: &AccountInfo| {
+  if *account.key != sysvar::clock::id() {
+    return Err(ProtocolError::InvalidClockAccount);
+  }
+  Ok(())
+});
+
 declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
   let data = account
     .try_borrow_data()
@@ -152,10 +159,10 @@ fn unpack_coption_key(src: &[u8; 36]) -> ProtocolResult<Option<Pubkey>> {
 pub fn validate_authority_pubkey(
   authority: &Pubkey,
   program_id: &Pubkey,
-  amm_info: &Pubkey,
+  info: &Pubkey,
   nonce: u8,
 ) -> Result<(), ProtocolError> {
-  let key = Pubkey::create_program_address(&[&amm_info.to_bytes()[..32], &[nonce]], program_id)
+  let key = Pubkey::create_program_address(&[&info.to_bytes()[..32], &[nonce]], program_id)
     .map_err(|_| ProtocolError::InvalidProgramAddress)?;
   if key != *authority {
     return Err(ProtocolError::InvalidAuthority);
@@ -488,6 +495,153 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
       Ok(DexSide::Ask)
     } else {
       Ok(DexSide::Bid)
+    }
+  }
+}
+
+declare_validated_account_wrapper!(StableSwapInfo, |account: &AccountInfo| {
+  let data = account
+    .try_borrow_data()
+    .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+  if data.len() != stable_swap_client::state::SwapInfo::LEN {
+    return Err(ProtocolError::InvalidStableSwapAccount);
+  }
+  let is_initialized = data[0];
+  if is_initialized != 1u8 {
+    return Err(ProtocolError::InvalidStableSwapAccountState);
+  }
+  let is_paused = data[1];
+  if is_paused == 1u8 {
+    return Err(ProtocolError::InvalidStableSwapAccountState);
+  }
+  Ok(())
+});
+
+#[allow(dead_code)]
+impl<'a, 'b: 'a> StableSwapInfo<'a, 'b> {
+  pub fn token_a(self) -> ProtocolResult<Pubkey> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(Pubkey::new_from_array(*array_ref![data, 107, 32]))
+  }
+
+  pub fn token_b(self) -> ProtocolResult<Pubkey> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(Pubkey::new_from_array(*array_ref![data, 139, 32]))
+  }
+
+  pub fn token_a_mint(self) -> ProtocolResult<Pubkey> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(Pubkey::new_from_array(*array_ref![data, 203, 32]))
+  }
+
+  pub fn token_b_mint(self) -> ProtocolResult<Pubkey> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(Pubkey::new_from_array(*array_ref![data, 235, 32]))
+  }
+  pub fn admin_fee_key_a(self) -> ProtocolResult<Pubkey> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(Pubkey::new_from_array(*array_ref![data, 267, 32]))
+  }
+
+  pub fn admin_fee_key_b(self) -> ProtocolResult<Pubkey> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(Pubkey::new_from_array(*array_ref![data, 299, 32]))
+  }
+
+  pub fn nonce(self) -> ProtocolResult<u8> {
+    let data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    Ok(data[2])
+  }
+}
+
+#[derive(Copy, Clone)]
+pub struct StableSwapArgs<'a, 'b: 'a> {
+  pub swap_info: StableSwapInfo<'a, 'b>,
+  pub authority_acc: &'a AccountInfo<'b>,
+  pub token_a: TokenAccount<'a, 'b>,
+  pub token_b: TokenAccount<'a, 'b>,
+  pub admin_fee_acc: &'a AccountInfo<'b>,
+  pub clock_sysvar_acc: SysClockAccount<'a, 'b>,
+  pub program_acc: &'a AccountInfo<'b>,
+}
+
+impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
+  pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
+    const MIN_ACCOUNTS: usize = 7;
+    if accounts.len() != MIN_ACCOUNTS {
+      return Err(ProtocolError::InvalidAccountsLength);
+    }
+    let &[
+      ref swap_info_acc,
+      ref authority_acc,
+      ref token_a_acc,
+      ref token_b_acc,
+      ref admin_fee_acc,
+      ref clock_sysvar_acc,
+      ref program_acc,
+    ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
+
+    let swap_info = StableSwapInfo::new(swap_info_acc)?;
+
+    if swap_info.token_a()? != *token_a_acc.key {
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
+    if swap_info.token_b()? != *token_b_acc.key {
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
+    if !(swap_info.admin_fee_key_a()? == *admin_fee_acc.key
+      || swap_info.admin_fee_key_b()? == *admin_fee_acc.key)
+    {
+      return Err(ProtocolError::InvalidStableSwapAccount);
+    }
+
+    validate_authority_pubkey(
+      authority_acc.key,
+      program_acc.key,
+      swap_info_acc.key,
+      swap_info.nonce()?,
+    )?;
+
+    Ok(StableSwapArgs {
+      swap_info,
+      authority_acc,
+      token_a: TokenAccount::new(token_a_acc)?,
+      token_b: TokenAccount::new(token_b_acc)?,
+      admin_fee_acc,
+      clock_sysvar_acc: SysClockAccount::new(clock_sysvar_acc)?,
+      program_acc,
+    })
+  }
+
+  pub fn find_token_pair(
+    &self,
+    source_token_account_mint: &Pubkey,
+  ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
+    if *source_token_account_mint == self.token_a.mint()? {
+      Ok((&self.token_a, &self.token_b))
+    } else {
+      Ok((&self.token_b, &self.token_a))
     }
   }
 }

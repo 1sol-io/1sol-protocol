@@ -12,6 +12,8 @@ pub enum ExchangerType {
   SplTokenSwap,
   /// ExchangerType SerumDex
   SerumDex,
+  /// Saber StableSwap
+  StableSwap,
 }
 
 impl ExchangerType {
@@ -19,6 +21,7 @@ impl ExchangerType {
     match value {
       0 => Some(ExchangerType::SplTokenSwap),
       1 => Some(ExchangerType::SerumDex),
+      2 => Some(ExchangerType::StableSwap),
       _ => None,
     }
   }
@@ -151,6 +154,25 @@ pub enum OneSolInstruction {
   ///     18. `[]`  serum-dex serum_dex_program_id
   SwapSerumDex(SwapInstruction),
 
+  /// Swap tokens through Saber StableSwap
+  ///
+  ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///     3. '[]` Token program id.
+  ///     4. `[writable]` OneSolProtocol AmmInfo.
+  ///     5. `[]` OneSolProtocol AmmInfo authority.
+  ///     6. `[writable]` OneSolProtocol AmmInfo token a account.
+  ///     7. `[writable]` OneSolProtocol AmmInfo token b account.
+  ///     8. `[]` StableSwap info.
+  ///     9. `[]` StableSwap authority.
+  ///     10. `[writable]` StableSwap token a account.
+  ///     11. `[writable]` StableSwap token b account.
+  ///     12. `[writable]` StableSwap admin fee account. Must have same mint as User DESTINATION token account.
+  ///     13. `[]` StableSwap clock id.
+  ///     14. `[]` StableSwap program id.
+  SwapStableSwap(SwapInstruction),
+
   /// Swap Two Steps
   ///   Define:
   ///     TokenSwap Accounts
@@ -174,6 +196,14 @@ pub enum OneSolInstruction {
   ///       8. `[writable]`  serum-dex open_orders
   ///       9. `[]`  serum-dex rent_sysvar
   ///       10. `[]`  serum-dex serum_dex_program_id
+  ///     Saber StableSwap accounts
+  ///       0. `[]` StableSwap info.
+  ///       1. `[]` StableSwap authority.
+  ///       2. `[writable]` StableSwap token a account.
+  ///       3. `[writable]` StableSwap token b account.
+  ///       4. `[writable]` StableSwap admin fee account. Must have same mint as User DESTINATION token account.
+  ///       5. `[]` StableSwap clock id.
+  ///       6. `[]` StableSwap program id.
   ///
   ///   All Accounts:
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet)
@@ -187,7 +217,7 @@ pub enum OneSolInstruction {
   ///     1. `[]` OneSolProtocol AmmInfo2 authority
   ///     2. `[writeable]` OneSolProtocol AmmInfo2 token a account
   ///     4. `[writeable]` OneSolProtocol AmmInfo2 token b account
-  ///     TokenSwap Accounts or SerumDex Accounts
+  ///     TokenSwap Accounts or SerumDex Accounts or Saber StableSwap Accounts
   SwapTwoSteps(SwapTwoStepsInstruction),
 }
 
@@ -201,6 +231,7 @@ impl OneSolInstruction {
       3 => Self::SwapSplTokenSwap(SwapInstruction::unpack(rest)?),
       4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
       5 => Self::SwapTwoSteps(SwapTwoStepsInstruction::unpack(rest)?),
+      6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }

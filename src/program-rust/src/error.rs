@@ -169,6 +169,15 @@ pub enum ProtocolError {
 
   #[error("invalid open orders account data")]
   InvalidOpenOrdersAccountData,
+
+  #[error("invalid stable-swap account")]
+  InvalidStableSwapAccount,
+
+  #[error("invalid stable-swap account state")]
+  InvalidStableSwapAccountState,
+
+  #[error("invalid clock account")]
+  InvalidClockAccount,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -231,6 +240,15 @@ impl PrintProgramError for ProtocolError {
       ProtocolError::OpenOrdersNotFound => msg!("Error: OpenOrdersNotFound"),
       ProtocolError::InvalidOpenOrdersAccountData => {
         msg!("Error: InvalidOpenOrdersAccountData")
+      }
+      ProtocolError::InvalidStableSwapAccount => {
+        msg!("Error: InvalidStableSwapAccount")
+      }
+      ProtocolError::InvalidStableSwapAccountState => {
+        msg!("Error: InvalidStableSwapAccountState")
+      }
+      ProtocolError::InvalidClockAccount => {
+        msg!("Error: InvalidClockAccount")
       }
     }
   }
