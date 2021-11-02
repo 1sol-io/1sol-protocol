@@ -2,8 +2,8 @@
 
 use crate::{
   account_parser::{
-    validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
-    StableSwapArgs, TokenAccount, TokenMint, UserArgs,
+    validate_authority_pubkey, AmmInfoArgs, OrcaSwapArgs, SerumDexArgs, SplTokenProgram,
+    SplTokenSwapArgs, StableSwapArgs, TokenAccount, TokenMint, UserArgs,
   },
   error::ProtocolError,
   instruction::{
@@ -56,6 +56,10 @@ impl Processor {
       OneSolInstruction::SwapStableSwap(data) => {
         msg!("Instruction: Swap StableSwap");
         Self::process_swap_stableswap(program_id, &data, accounts)
+      }
+      OneSolInstruction::SwapOrcaSwap(data) => {
+        msg!("Instruction: Swap OrcaSwap");
+        Self::process_swap_orcaswap(program_id, &data, accounts)
       }
       OneSolInstruction::SwapTwoSteps(data) => {
         msg!("Instruction: Swap Two Steps");
@@ -397,24 +401,115 @@ impl Processor {
     let from_amount_changed = from_amount_before.checked_sub(from_amount_after).unwrap();
     let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
     msg!("from_amount changed: {}", from_amount_changed);
-    msg!(
-      "result_with_fee: {}, expect: {}, minimum: {}",
+    let to_amount = Self::calculate_output(
       to_amount_include_fee,
-      data.expect_amount_out,
-      data.minimum_amount_out,
+      data.minimum_amount_out.get(),
+      data.expect_amount_out.get(),
+    )?;
+    msg!("transfer to user destination, amount: {}", to_amount);
+    sol_log_compute_units();
+    Self::token_transfer(
+      amm_info_args.amm_info_key,
+      spl_token_program.inner(),
+      amm_destination_token_acc.inner(),
+      user_args.token_destination_account.inner(),
+      amm_info_args.authority_acc_info,
+      amm_info_args.nonce(),
+      to_amount,
+    )?;
+    // TODO close native_wrap account
+    Ok(())
+  }
+
+  /// Processes an [Swap](enum.Instruction.html).
+  pub fn process_swap_orcaswap(
+    program_id: &Pubkey,
+    data: &SwapInstruction,
+    accounts: &[AccountInfo],
+  ) -> ProgramResult {
+    const MIN_ACCOUNTS: usize = 15;
+    if accounts.len() < MIN_ACCOUNTS {
+      return Err(ProtocolError::InvalidAccountsLength.into());
+    }
+    let (fixed_accounts, other_accounts) = array_refs![accounts, 8; ..;];
+
+    let (user_accounts, &[ref spl_token_program_acc], amm_info_accounts) =
+      array_refs![fixed_accounts, 3, 1, 4];
+
+    let user_args = UserArgs::with_parsed_args(user_accounts)?;
+
+    let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
+    let amm_info_args = AmmInfoArgs::with_parsed_args(program_id, amm_info_accounts)?;
+
+    msg!(
+      "source_token_account amount: {}",
+      user_args.token_source_account.balance()?,
     );
-    if to_amount_include_fee == 0 {
-      return Err(ProtocolError::DexSwapError.into());
+
+    let user_source_token_mint = user_args.token_source_account.mint()?;
+    let user_destination_token_mint = user_args.token_destination_account.mint()?;
+
+    let (amm_source_token_acc, amm_destination_token_acc) =
+      amm_info_args.find_token_pair(&user_source_token_mint)?;
+
+    if amm_source_token_acc.mint()? != user_source_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if amm_destination_token_acc.mint()? != user_destination_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
     }
 
-    if to_amount_include_fee < data.minimum_amount_out.get() {
-      return Err(ProtocolError::ExceededSlippage.into());
-    }
-    let fee = to_amount_include_fee
-      .checked_sub(data.expect_amount_out.get())
-      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
-      .unwrap_or(0);
-    let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
+    // transfer from user token_source_account to amm_source_token_account
+    Self::token_transfer(
+      amm_info_args.amm_info_key,
+      spl_token_program.inner(),
+      user_args.token_source_account.inner(),
+      amm_source_token_acc.inner(),
+      user_args.source_account_owner.inner(),
+      amm_info_args.nonce(),
+      data.amount_in.get(),
+    )?;
+
+    let from_amount_before = amm_source_token_acc.balance()?;
+    let to_amount_before = amm_destination_token_acc.balance()?;
+    msg!(
+      "from_amount_before: {}, to_amount_before: {}, amount_in: {}",
+      from_amount_before,
+      to_amount_before,
+      data.amount_in
+    );
+
+    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
+    let signers = &[&authority_signature_seeds[..]];
+
+    Self::process_step_orcaswap(
+      program_id,
+      data,
+      amm_source_token_acc,
+      amm_destination_token_acc,
+      amm_info_args.authority_acc_info,
+      Some(signers),
+      &spl_token_program,
+      other_accounts,
+    )?;
+    let from_amount_after = amm_source_token_acc.balance()?;
+    let to_amount_after = amm_destination_token_acc.balance()?;
+    msg!(
+      "from_amount_after: {}, to_amount_after: {}",
+      from_amount_after,
+      to_amount_after
+    );
+
+    let from_amount_changed = from_amount_before.checked_sub(from_amount_after).unwrap();
+    let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
+    msg!("from_amount changed: {}", from_amount_changed);
+
+    let to_amount = Self::calculate_output(
+      to_amount_include_fee,
+      data.minimum_amount_out.get(),
+      data.expect_amount_out.get(),
+    )?;
 
     // Transfer OnesolB -> AliceB
     msg!("transfer to user destination, amount: {}", to_amount);
@@ -521,26 +616,13 @@ impl Processor {
     let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
     msg!("from_amount changed: {}", from_amount_changed);
 
-    if to_amount_include_fee == 0 {
-      return Err(ProtocolError::DexSwapError.into());
-    }
-
-    msg!(
-      "to_amount_include_fee: {:?}, min_expect_amount: {:?}, expect_amount: {:?}",
+    let to_amount = Self::calculate_output(
       to_amount_include_fee,
-      data.minimum_amount_out,
-      data.expect_amount_out,
-    );
-    if to_amount_include_fee < data.minimum_amount_out.get() {
-      return Err(ProtocolError::ExceededSlippage.into());
-    }
-    let fee = to_amount_include_fee
-      .checked_sub(data.expect_amount_out.get())
-      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
-      .unwrap_or(0);
-    let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
-
+      data.minimum_amount_out.get(),
+      data.expect_amount_out.get(),
+    )?;
     msg!("transfer to user destination, amount: {}", to_amount);
+
     Self::token_transfer(
       amm_info_args.amm_info_key,
       spl_token_program.inner(),
@@ -667,24 +749,11 @@ impl Processor {
     let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
     msg!("from_amount changed: {}", from_amount_changed);
 
-    if to_amount_include_fee == 0 {
-      return Err(ProtocolError::DexSwapError.into());
-    }
-
-    msg!(
-      "to_amount_include_fee: {:?}, min_expect_amount: {:?}, expect_amount: {:?}",
+    let to_amount = Self::calculate_output(
       to_amount_include_fee,
-      data.minimum_amount_out,
-      data.expect_amount_out,
-    );
-    if to_amount_include_fee < data.minimum_amount_out.get() {
-      return Err(ProtocolError::ExceededSlippage.into());
-    }
-    let fee = to_amount_include_fee
-      .checked_sub(data.expect_amount_out.get())
-      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
-      .unwrap_or(0);
-    let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
+      data.minimum_amount_out.get(),
+      data.expect_amount_out.get(),
+    )?;
 
     msg!("transfer to user destination, amount: {}", to_amount);
     Self::token_transfer(
@@ -738,6 +807,18 @@ impl Processor {
       }
       ExchangerType::StableSwap => {
         Self::process_step_stableswap(
+          program_id,
+          &data,
+          source_token_account,
+          destination_token_account,
+          authority,
+          signers_seed,
+          spl_token_program,
+          accounts,
+        )?;
+      }
+      ExchangerType::OrcaSwap => {
+        Self::process_step_orcaswap(
           program_id,
           &data,
           source_token_account,
@@ -989,6 +1070,99 @@ impl Processor {
     Ok(())
   }
 
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments, unused_variables)]
+  fn process_step_orcaswap<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    data: &SwapInstruction,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    authority: &'a AccountInfo<'b>,
+    signers_seed: Option<&[&[&[u8]]]>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    let swap_args = OrcaSwapArgs::with_parsed_args(accounts)?;
+    let token_swap_amount_in = data.amount_in;
+    let token_swap_minimum_amount_out = data.minimum_amount_out;
+    msg!(
+      "swap using token-swap, amount_in: {}, minimum_amount_out: {}, expect_amount_out: {}",
+      data.amount_in,
+      data.minimum_amount_out,
+      data.expect_amount_out,
+    );
+
+    let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+
+    if source_token_account.balance()? < data.amount_in.get() {
+      return Err(ProtocolError::InvalidSourceBalance.into());
+    }
+
+    let (pool_source_token_acc, pool_destination_token_acc) =
+      swap_args.find_token_pair(&source_token_mint)?;
+
+    if pool_source_token_acc.mint()? != source_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if pool_destination_token_acc.mint()? != destination_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+
+    let mut swap_accounts = vec![
+      swap_args.swap_info.clone(),
+      swap_args.authority_acc_info.clone(),
+      authority.clone(),
+      // amm_info_args.authority_acc_info.clone(),
+      source_token_account.inner().clone(),
+      pool_source_token_acc.inner().clone(),
+      pool_destination_token_acc.inner().clone(),
+      destination_token_account.inner().clone(),
+      swap_args.pool_mint.inner().clone(),
+      swap_args.fee_account.inner().clone(),
+    ];
+
+    let host_fee_account_key = swap_args.host_fee_account.map(|v| v.inner().key);
+
+    if host_fee_account_key.is_some() {
+      swap_accounts.push(swap_args.host_fee_account.unwrap().inner().clone());
+    }
+
+    let instruction_data = spl_token_swap::Swap {
+      amount_in: token_swap_amount_in.get(),
+      minimum_amount_out: token_swap_minimum_amount_out.get(),
+    };
+    let instruction = spl_token_swap::spl_token_swap_instruction(
+      swap_args.program.key,
+      spl_token_program.inner().key,
+      swap_args.swap_info.key,
+      swap_args.authority_acc_info.key,
+      authority.key,
+      source_token_account.inner().key,
+      pool_source_token_acc.inner().key,
+      pool_destination_token_acc.inner().key,
+      destination_token_account.inner().key,
+      swap_args.pool_mint.inner().key,
+      swap_args.fee_account.inner().key,
+      host_fee_account_key,
+      instruction_data,
+    )?;
+    msg!("invoke spl-token-swap swap");
+
+    match signers_seed {
+      Some(signers) => {
+        invoke_signed(&instruction, &swap_accounts[..], signers)?;
+      }
+      None => {
+        if !authority.is_signer {
+          return Err(ProtocolError::InvalidAuthority.into());
+        }
+        invoke(&instruction, &swap_accounts)?;
+      }
+    }
+    Ok(())
+  }
+
   /// check token account authority
   pub fn check_token_account_authority(
     token_account: &spl_token::state::Account,
@@ -1037,5 +1211,29 @@ impl Processor {
       ],
       signers,
     )
+  }
+
+  pub fn calculate_output(
+    to_amount_include_fee: u64,
+    minimum_amount_out: u64,
+    expect_amount_out: u64,
+  ) -> Result<u64, ProgramError> {
+    if to_amount_include_fee == 0 {
+      return Err(ProtocolError::DexSwapError.into());
+    }
+    msg!(
+      "to_amount_include_fee: {:?}, min_expect_amount: {:?}, expect_amount: {:?}",
+      to_amount_include_fee,
+      minimum_amount_out,
+      expect_amount_out,
+    );
+    if to_amount_include_fee < minimum_amount_out {
+      return Err(ProtocolError::ExceededSlippage.into());
+    }
+    let fee = to_amount_include_fee
+      .checked_sub(expect_amount_out)
+      .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
+      .unwrap_or(0);
+    Ok(to_amount_include_fee.checked_sub(fee).unwrap())
   }
 }

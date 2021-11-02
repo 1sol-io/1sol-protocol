@@ -300,6 +300,108 @@ export class SaberStableSwapInfo {
   }
 }
 
+export class OrcaSwapInfo {
+  constructor(
+    private programId: PublicKey,
+    private swapInfo: PublicKey,
+    private authority: PublicKey,
+    private tokenAccountA: PublicKey,
+    private tokenAccountB: PublicKey,
+    private mintA: PublicKey,
+    private mintB: PublicKey,
+    private poolMint: PublicKey,
+    private feeAccount: PublicKey,
+    private hostFeeAccount: PublicKey | null
+  ) {
+    this.programId = programId;
+    this.swapInfo = swapInfo;
+    this.authority = authority;
+    this.tokenAccountA = tokenAccountA;
+    this.tokenAccountB = tokenAccountB;
+    this.mintA = mintA;
+    this.mintB = mintB;
+    this.poolMint = poolMint;
+    this.feeAccount = feeAccount;
+    this.hostFeeAccount = hostFeeAccount;
+  }
+
+  static async load({
+    connection,
+    address,
+    programId,
+    hostFeeAccount = null,
+  }: {
+    connection: Connection,
+    address: PublicKey,
+    programId: PublicKey,
+    hostFeeAccount: PublicKey | null,
+  }): Promise<OrcaSwapInfo> {
+
+    const data = await loadAccount(connection, address, programId);
+    const swapData = TokenSwapLayout.decode(data);
+  
+    if (!swapData.isInitialized) {
+      throw new Error(`Invalid orca-swap state`);
+    }
+
+    const bumpSeed = swapData.bumpSeed ? swapData.bumpSeed : swapData.nonce;
+  
+    const authority = await PublicKey.createProgramAddress(
+      [address.toBuffer()].concat(Buffer.from([bumpSeed])),
+      programId
+    );
+  
+    const poolMint = new PublicKey(swapData.tokenPool);
+    const feeAccount = new PublicKey(swapData.feeAccount);
+    const tokenAccountA = new PublicKey(swapData.tokenAccountA);
+    const mintA = new PublicKey(swapData.mintA);
+    const tokenAccountB = new PublicKey(swapData.tokenAccountB);
+    const mintB = new PublicKey(swapData.mintB);
+  
+    return new OrcaSwapInfo(
+      programId,
+      address,
+      authority,
+      tokenAccountA,
+      tokenAccountB,
+      mintA,
+      mintB,
+      poolMint,
+      feeAccount,
+      hostFeeAccount
+    );
+  }
+
+  toKeys(): Array<AccountMeta> {
+    const keys = [
+      { pubkey: this.swapInfo, isSigner: false, isWritable: false },
+      { pubkey: this.authority, isSigner: false, isWritable: false },
+      { pubkey: this.tokenAccountA, isSigner: false, isWritable: true },
+      { pubkey: this.tokenAccountB, isSigner: false, isWritable: true },
+      { pubkey: this.poolMint, isSigner: false, isWritable: true },
+      { pubkey: this.feeAccount, isSigner: false, isWritable: true },
+      { pubkey: this.programId, isSigner: false, isWritable: false },
+    ];
+    if (this.hostFeeAccount) {
+      keys.push({
+        pubkey: this.hostFeeAccount,
+        isSigner: false,
+        isWritable: true,
+      });
+    }
+    return keys;
+  }
+
+  includeHostFeeAccount(): number {
+    if (this.hostFeeAccount !== null) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+}
+
+
 export class AmmInfo {
   constructor(
     public pubkey: PublicKey,
@@ -688,6 +790,119 @@ export class OneSolProtocol {
     });
   }
 
+  async createSwapByOrcaSwapInstruction(
+    {
+      fromTokenAccountKey,
+      toTokenAccountKey,
+      fromMintKey,
+      toMintKey,
+      userTransferAuthority,
+      ammInfo,
+      amountIn,
+      expectAmountOut,
+      minimumAmountOut,
+      swapInfo,
+    }: {
+      fromTokenAccountKey: PublicKey;
+      toTokenAccountKey: PublicKey;
+      fromMintKey: PublicKey;
+      toMintKey: PublicKey;
+      userTransferAuthority: PublicKey;
+      ammInfo: AmmInfo;
+      amountIn: Numberu64;
+      expectAmountOut: Numberu64;
+      minimumAmountOut: Numberu64;
+      swapInfo: OrcaSwapInfo;
+    },
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>
+  ): Promise<void> {
+    instructions.push(
+      await OneSolProtocol.makeSwapByOrcaSwapInstruction({
+        ammInfo: ammInfo,
+        sourceTokenKey: fromTokenAccountKey,
+        sourceMint: fromMintKey,
+        destinationTokenKey: toTokenAccountKey,
+        destinationMint: toMintKey,
+        transferAuthority: userTransferAuthority,
+        tokenProgramId: this.tokenProgramId,
+        swapInfo: swapInfo,
+        amountIn: amountIn,
+        expectAmountOut: expectAmountOut,
+        minimumAmountOut: minimumAmountOut,
+      })
+    );
+  }
+
+  static async makeSwapByOrcaSwapInstruction({
+    ammInfo,
+    sourceTokenKey,
+    sourceMint,
+    destinationTokenKey,
+    destinationMint,
+    transferAuthority,
+    tokenProgramId,
+    swapInfo,
+    amountIn,
+    expectAmountOut,
+    minimumAmountOut,
+  }: {
+    ammInfo: AmmInfo;
+    sourceTokenKey: PublicKey;
+    sourceMint: PublicKey;
+    destinationTokenKey: PublicKey;
+    destinationMint: PublicKey;
+    transferAuthority: PublicKey;
+    tokenProgramId: PublicKey;
+    swapInfo: OrcaSwapInfo;
+    amountIn: Numberu64;
+    expectAmountOut: Numberu64;
+    minimumAmountOut: Numberu64;
+  }): Promise<TransactionInstruction> {
+    if (
+      !(
+        (sourceMint.equals(ammInfo.tokenMintA()) &&
+          destinationMint.equals(ammInfo.tokenMintB())) ||
+        (sourceMint.equals(ammInfo.tokenMintB()) &&
+          destinationMint.equals(ammInfo.tokenMintA()))
+      )
+    ) {
+      throw new Error(`ammInfo(${ammInfo.pubkey}) error`);
+    }
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+      uint64("amountIn"),
+      uint64("expectAmountOut"),
+      uint64("minimumAmountOut"),
+    ]);
+
+    let dataMap: any = {
+      instruction: 7, // Swap instruction
+      amountIn: amountIn.toBuffer(),
+      expectAmountOut: expectAmountOut.toBuffer(),
+      minimumAmountOut: minimumAmountOut.toBuffer(),
+    };
+
+    const keys = [
+      { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
+      { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
+      { pubkey: transferAuthority, isSigner: true, isWritable: false },
+      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
+    ];
+    keys.push(...ammInfo.toKeys());
+    const swapKeys = swapInfo.toKeys();
+    keys.push(...swapKeys);
+
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(dataMap, data);
+
+    return new TransactionInstruction({
+      keys,
+      programId: ammInfo.programId,
+      data,
+    });
+  }
+
 
   async createSwapBySerumDexInstruction(
     {
@@ -876,11 +1091,11 @@ export class OneSolProtocol {
     tokenProgramId: PublicKey;
     step1: {
       ammInfo: AmmInfo;
-      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
+      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo | OrcaSwapInfo;
     };
     step2: {
       ammInfo: AmmInfo;
-      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
+      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo | OrcaSwapInfo;
     };
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
@@ -954,6 +1169,11 @@ export class OneSolProtocol {
         const swapKeys = stepInfo.toKeys(stepSourceMint);
         keys.push(...swapKeys);
         dataMap[`step${i+1}ExchangerType`] = 2;
+        dataMap[`step${i+1}AccountsCount`] = swapKeys.length;
+      } else if (stepInfo instanceof OrcaSwapInfo) {
+        const swapKeys = stepInfo.toKeys();
+        keys.push(...swapKeys);
+        dataMap[`step${i+1}ExchangerType`] = 3;
         dataMap[`step${i+1}AccountsCount`] = swapKeys.length;
       }
     });

@@ -14,6 +14,8 @@ pub enum ExchangerType {
   SerumDex,
   /// Saber StableSwap
   StableSwap,
+  /// OrcaSwap,
+  OrcaSwap,
 }
 
 impl ExchangerType {
@@ -22,6 +24,7 @@ impl ExchangerType {
       0 => Some(ExchangerType::SplTokenSwap),
       1 => Some(ExchangerType::SerumDex),
       2 => Some(ExchangerType::StableSwap),
+      3 => Some(ExchangerType::OrcaSwap),
       _ => None,
     }
   }
@@ -173,6 +176,30 @@ pub enum OneSolInstruction {
   ///     14. `[]` StableSwap program id.
   SwapStableSwap(SwapInstruction),
 
+  /// Swap through ORCA swap.
+  ///
+  ///   user accounts
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet)
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   spl token program
+  ///   3. '[]` Token program id
+  ///   amm_info accounts
+  ///   4. `[writable]` OneSolProtocol AmmInfo
+  ///   5. `[]` OneSolProtocol AmmInfo authority
+  ///   6. `[writable]` OneSolProtocol AmmInfo token a account
+  ///   7. `[writable]` OneSolProtocol AmmInfo token b account
+  ///   orca_swap accounts
+  ///   8. `[]` Orca swap_info account
+  ///   9. `[]` Orca swap_info authority
+  ///   10. `[writable]` Orca token_A Account.
+  ///   11. `[writable]` Orca token_B Account.
+  ///   12. `[writable]` Orca Pool token mint, to generate trading fees
+  ///   13. `[writable]` Orca Fee account, to receive trading fees
+  ///   14. '[]` Orca-Swap program id
+  ///   15. `[optional, writable]` Host fee account to receive additional trading fees
+  SwapOrcaSwap(SwapInstruction),
+
   /// Swap Two Steps
   ///   Define:
   ///     TokenSwap Accounts
@@ -232,6 +259,7 @@ impl OneSolInstruction {
       4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
       5 => Self::SwapTwoSteps(SwapTwoStepsInstruction::unpack(rest)?),
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
+      7 => Self::SwapOrcaSwap(SwapInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }

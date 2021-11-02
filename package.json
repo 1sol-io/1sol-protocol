@@ -33,8 +33,8 @@
     "buffer-layout": "^1.2.2"
   },
   "devDependencies": {
-    "@saberhq/stableswap-sdk": "^1.5.2",
     "@project-serum/serum": "0.13.54",
+    "@saberhq/stableswap-sdk": "^1.5.2",
     "@solana/spl-token": "0.1.4",
     "@solana/spl-token-swap": "0.1.0",
     "@types/bn.js": "^5.1.0",

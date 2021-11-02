@@ -645,3 +645,67 @@ impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
     }
   }
 }
+
+#[derive(Copy, Clone)]
+pub struct OrcaSwapArgs<'a, 'b: 'a> {
+  pub swap_info: &'a AccountInfo<'b>,
+  pub authority_acc_info: &'a AccountInfo<'b>,
+  pub token_a_account: TokenAccount<'a, 'b>,
+  pub token_b_account: TokenAccount<'a, 'b>,
+  pub pool_mint: TokenMint<'a, 'b>,
+  pub fee_account: TokenAccount<'a, 'b>,
+  pub program: &'a AccountInfo<'b>,
+  pub host_fee_account: Option<TokenAccount<'a, 'b>>,
+}
+
+impl<'a, 'b: 'a> OrcaSwapArgs<'a, 'b> {
+  pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
+    const MIN_ACCOUNTS: usize = 7;
+    if !(accounts.len() == MIN_ACCOUNTS || accounts.len() == MIN_ACCOUNTS + 1) {
+      return Err(ProtocolError::InvalidAccountsLength);
+    }
+    let (fixed_accounts, host_fee_account): (
+      &'a [AccountInfo<'b>; MIN_ACCOUNTS],
+      &'a [AccountInfo<'b>],
+    ) = array_refs![accounts, MIN_ACCOUNTS; .. ;];
+    let &[
+      ref swap_info_acc,
+      ref authority_acc,
+      ref token_a_acc,
+      ref token_b_acc,
+      ref pool_mint_acc,
+      ref fee_acc,
+      ref program_acc,
+    ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
+    let host_fee_acc = match host_fee_account {
+      &[] => None,
+      &[ref acc] => Some(TokenAccount::new(acc)?),
+      _ => check_unreachable!()?,
+    };
+    if *swap_info_acc.owner != *program_acc.key {
+      return Err(ProtocolError::InvalidProgramAddress);
+    }
+    // other checks will run in spl-token-swap
+    Ok(OrcaSwapArgs {
+      swap_info: swap_info_acc,
+      authority_acc_info: authority_acc,
+      token_a_account: TokenAccount::new(token_a_acc)?,
+      token_b_account: TokenAccount::new(token_b_acc)?,
+      pool_mint: TokenMint::new(pool_mint_acc)?,
+      fee_account: TokenAccount::new(fee_acc)?,
+      program: program_acc,
+      host_fee_account: host_fee_acc,
+    })
+  }
+
+  pub fn find_token_pair(
+    &self,
+    source_token_account_mint: &Pubkey,
+  ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
+    if *source_token_account_mint == self.token_a_account.mint()? {
+      Ok((&self.token_a_account, &self.token_b_account))
+    } else {
+      Ok((&self.token_b_account, &self.token_a_account))
+    }
+  }
+}
