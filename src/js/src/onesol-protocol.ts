@@ -117,17 +117,13 @@ export const AmmInfoLayout = BufferLayout.struct([
   publicKeyLayout("tokenMintA"),
   publicKeyLayout("tokenAccountB"),
   publicKeyLayout("tokenMintB"),
-  BufferLayout.struct(
-    [
-      BufferLayout.blob(128, "TokenAInAmount"),
-      BufferLayout.blob(128, "TokenBOutAmount"),
-      uint64("tokenA2BFee"),
-      BufferLayout.blob(128, "TokenAInAmount"),
-      BufferLayout.blob(128, "TokenBOutAmount"),
-      uint64("tokenB2AFee"),
-    ],
-    "outputData"
-  ),
+  BufferLayout.blob(16, "TokenAInAmount"),
+  BufferLayout.blob(16, "TokenBOutAmount"),
+  uint64("tokenA2BFee"),
+  BufferLayout.blob(16, "TokenBInAmount"),
+  BufferLayout.blob(16, "TokenAOutAmount"),
+  uint64("tokenB2AFee"),
+  BufferLayout.blob(5),
 ]);
 
 export const DexMarketInfoLayout = BufferLayout.struct([

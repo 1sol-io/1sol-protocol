@@ -191,6 +191,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       }
       None => None,
     };
+    accounts.push(self.dex_program.clone());
 
     let instruction = serum_dex::instruction::new_order(
       self.market.market.key,
@@ -250,6 +251,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       self.market.open_orders.clone(),
       self.authority.clone(),
       self.market.event_queue.clone(),
+      self.dex_program.clone(),
     ];
 
     let instruction = instruction::cancel_order(
