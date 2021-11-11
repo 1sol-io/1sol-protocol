@@ -100,7 +100,7 @@ pub enum OneSolInstruction {
   ///
   /// 0. `[writable, signer]` new DexMarket account to create.
   /// 1. `[]` $authority derived from `create_program_address(&[DexMarket account])`
-  /// 2. `[writable]` AmmInfo account.
+  /// 2. `[]` AmmInfo account.
   /// 3. `[writable]` market account. SerumDexMarket account.
   /// 4. `[writable]` open_orders account. SerumDexOpenOrders account.
   /// 5. `[]` the rend sysvar.

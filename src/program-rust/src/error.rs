@@ -178,6 +178,12 @@ pub enum ProtocolError {
 
   #[error("invalid clock account")]
   InvalidClockAccount,
+
+  #[error("invalid rent account")]
+  InvalidRentAccount,
+
+  #[error("invalid amm-info account")]
+  InvalidAmmInfoAccount,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -249,6 +255,12 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidClockAccount => {
         msg!("Error: InvalidClockAccount")
+      }
+      ProtocolError::InvalidRentAccount => {
+        msg!("Error: InvalidRentAccount")
+      }
+      ProtocolError::InvalidAmmInfoAccount => {
+        msg!("Error: InvalidAmmInfoAccount")
       }
     }
   }

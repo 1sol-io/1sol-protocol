@@ -263,7 +263,7 @@ impl Pack for DexMarketInfo {
       coin_mint,
       open_orders,
       dex_program_id,
-    ) = mut_array_refs![output,2, 32, 32, 32, 32, 32, 32 ];
+    ) = mut_array_refs![output,2, 32, 32, 32, 32, 32, 32];
     account_flags.copy_from_slice(&self.account_flags.to_le_bytes()[..]);
     amm_info.copy_from_slice(self.amm_info.as_ref());
     market.copy_from_slice(self.market.as_ref());

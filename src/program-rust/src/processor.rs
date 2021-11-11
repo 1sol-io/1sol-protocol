@@ -26,6 +26,7 @@ use solana_program::{
   program_error::ProgramError,
   program_pack::Pack,
   pubkey::Pubkey,
+  sysvar::rent,
 };
 use std::{convert::identity, num::NonZeroU64};
 // use std::convert::identity;
@@ -80,6 +81,10 @@ impl Processor {
     let token_b_vault_info = next_account_info(account_info_iter)?;
     let token_b_mint_info = next_account_info(account_info_iter)?;
     let spl_token_program_info = next_account_info(account_info_iter)?;
+
+    if *onesol_amm_info_acc.owner != *program_id {
+      return Err(ProtocolError::InvalidAmmInfoAccount.into());
+    }
 
     let token_a = TokenAccountAndMint::new(
       TokenAccount::new(token_a_vault_info)?,
@@ -144,12 +149,24 @@ impl Processor {
 
     let dex_program_id = *dex_program_id_info.key;
 
+    if *amm_info_acc_info.owner != *program_id {
+      return Err(ProtocolError::InvalidAmmInfoAccount.into());
+    }
+
+    if *onesol_market_acc_info.owner != *program_id {
+      return Err(ProtocolError::InvalidProgramAddress.into());
+    }
+
     validate_authority_pubkey(
       authority_info.key,
       program_id,
       amm_info_acc_info.key,
       data.nonce,
     )?;
+
+    if *dex_open_orders_info.owner != dex_program_id {
+      return Err(ProtocolError::InvalidProgramAddress.into());
+    }
 
     let amm_info = AmmInfo::unpack(&amm_info_acc_info.data.borrow())
       .map_err(|_| ProtocolError::InvalidAccountData)?;
@@ -169,6 +186,10 @@ impl Processor {
     }
     if *dex_market_acc_info.owner != dex_program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
+    }
+
+    if !rent::check_id(rent_acc_info.key) {
+      return Err(ProtocolError::InvalidRentAccount.into());
     }
 
     let is_initialized = match DexMarketInfo::unpack(&onesol_market_acc_info.data.borrow()) {
@@ -829,6 +850,7 @@ impl Processor {
           .clone(),
       );
     }
+    swap_accounts.push(spl_token_swap_args.program.clone());
 
     let instruction_data = spl_token_swap::Swap {
       amount_in: token_swap_amount_in.get(),
@@ -969,6 +991,7 @@ impl Processor {
       swap_args.admin_fee_acc.clone(),
       spl_token_program.inner().clone(),
       swap_args.clock_sysvar_acc.inner().clone(),
+      swap_args.program_acc.clone(),
     ];
 
     let instruction = stable_swap_client::instruction::swap(
