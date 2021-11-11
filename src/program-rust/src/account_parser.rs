@@ -99,16 +99,24 @@ declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
     msg!(
       "spl-tokenswap-info, data.len(): {}, is_initialized: {}",
       data.len(),
+      data[1]
+    );
+    return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
+  }
+  let version = data[0];
+  if version != 1u8 {
+    msg!(
+      "spl-tokenswap-info, version: {}",
       data[0]
     );
     return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
-  let is_initialized = data[0];
+  let is_initialized = data[1];
   if is_initialized != 1u8 {
     msg!(
       "spl-tokenswap-info, data.len(): {}, is_initialized: {}",
       data.len(),
-      data[0]
+      data[1]
     );
     return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
