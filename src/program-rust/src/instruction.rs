@@ -89,10 +89,10 @@ pub enum OneSolInstruction {
   /// 0. `[writable, signer]` New 1solProtocol AmmInfo account to create.
   /// 1. `[]` $authority derived from `create_program_address(&[1solProtocolAmmInfo account])`
   /// 2. `[]` Owner account
-  /// 3. `[writable]` pc vault Account. Must be non zero, owned by 1sol.
-  /// 4. `[writable]` pc_mint Account.
-  /// 5. `[writable]` coin_vault Account.
-  /// 6. `[writable]` coin_mint Account.
+  /// 3. `[]` token_a_vault Account. Must be non zero, owned by 1sol.
+  /// 4. `[]` token_a mint Account.
+  /// 5. `[]` token_b_vault Account.
+  /// 6. `[]` token_b_mint Account.
   /// 7. '[]` Spl-Token program id
   InitializeAmmInfo(Initialize),
 

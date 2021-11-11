@@ -1,5 +1,3 @@
-use std::cell::RefMut;
-
 use crate::{
   check_unreachable,
   error::{ProtocolError, ProtocolResult},
@@ -105,10 +103,7 @@ declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
   }
   let version = data[0];
   if version != 1u8 {
-    msg!(
-      "spl-tokenswap-info, version: {}",
-      data[0]
-    );
+    msg!("spl-tokenswap-info, version: {}", data[0]);
     return Err(ProtocolError::InvalidSplTokenSwapInfoAccount);
   }
   let is_initialized = data[1];
@@ -244,18 +239,14 @@ impl<'a, 'b: 'a> TokenAccount<'a, 'b> {
 
 #[derive(Copy, Clone)]
 pub struct TokenAccountAndMint<'a, 'b: 'a> {
-  account: TokenAccount<'a, 'b>,
-  mint: TokenMint<'a, 'b>,
+  pub account: TokenAccount<'a, 'b>,
+  pub mint: TokenMint<'a, 'b>,
 }
 
 #[allow(unused)]
 impl<'a, 'b: 'a> TokenAccountAndMint<'a, 'b> {
-  fn new(account: TokenAccount<'a, 'b>, mint: TokenMint<'a, 'b>) -> ProtocolResult<Self> {
-    let account_data = account
-      .0
-      .try_borrow_data()
-      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-    if mint.0.key.as_ref() != &account_data[..32] {
+  pub fn new(account: TokenAccount<'a, 'b>, mint: TokenMint<'a, 'b>) -> ProtocolResult<Self> {
+    if *mint.pubkey() != account.mint()? {
       return Err(ProtocolError::InvalidTokenMint);
     }
     Ok(TokenAccountAndMint { account, mint })
@@ -309,7 +300,7 @@ impl<'a, 'b: 'a> UserArgs<'a, 'b> {
 }
 
 pub struct AmmInfoArgs<'a, 'b: 'a> {
-  pub amm_info: RefMut<'a, AmmInfo>,
+  pub amm_info: AmmInfo,
   pub amm_info_key: &'a Pubkey,
   pub authority_acc_info: &'a AccountInfo<'b>,
   pub token_a_account: TokenAccount<'a, 'b>,
@@ -336,7 +327,10 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
       return Err(ProtocolError::InvalidOwner);
     }
     // Pubkey::create_program_address(seeds, program_id)
-    let amm_info = AmmInfo::load_mut(amm_info_acc, true)?;
+    let data = amm_info_acc
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    let amm_info = AmmInfo::unpack(&data).map_err(|_| ProtocolError::InvalidAccountData)?;
 
     validate_authority_pubkey(
       authority_acc_info.key,

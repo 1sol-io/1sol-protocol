@@ -3,7 +3,7 @@
 use crate::{
   account_parser::{
     validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
-    StableSwapArgs, TokenAccount, TokenMint, UserArgs,
+    StableSwapArgs, TokenAccount, TokenAccountAndMint, TokenMint, UserArgs,
   },
   error::ProtocolError,
   instruction::{
@@ -24,6 +24,7 @@ use solana_program::{
   msg,
   program::{invoke, invoke_signed},
   program_error::ProgramError,
+  program_pack::Pack,
   pubkey::Pubkey,
 };
 use std::{convert::identity, num::NonZeroU64};
@@ -80,6 +81,18 @@ impl Processor {
     let token_b_mint_info = next_account_info(account_info_iter)?;
     let spl_token_program_info = next_account_info(account_info_iter)?;
 
+    let token_a = TokenAccountAndMint::new(
+      TokenAccount::new(token_a_vault_info)?,
+      TokenMint::new(token_a_mint_info)?,
+    )?;
+    token_a.account.check_owner(authority_info.key)?;
+
+    let token_b = TokenAccountAndMint::new(
+      TokenAccount::new(token_b_vault_info)?,
+      TokenMint::new(token_b_mint_info)?,
+    )?;
+    token_b.account.check_owner(authority_info.key)?;
+
     validate_authority_pubkey(
       authority_info.key,
       program_id,
@@ -89,38 +102,28 @@ impl Processor {
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_info)?;
 
-    let token_a_vault = TokenAccount::new(token_a_vault_info)?;
-    let token_a_mint = TokenMint::new(token_a_mint_info)?;
-    if token_a_vault.mint()? != *token_a_mint.inner().key {
-      return Err(ProtocolError::InvalidTokenAccount.into());
-    }
-    token_a_vault.check_owner(authority_info.key)?;
-
-    let token_b_vault = TokenAccount::new(token_b_vault_info)?;
-    let token_b_mint = TokenMint::new(token_b_mint_info)?;
-    if token_b_vault.mint()? != *token_b_mint.inner().key {
-      return Err(ProtocolError::InvalidTokenAccount.into());
-    }
-    token_b_vault.check_owner(authority_info.key)?;
-
-    if *token_a_mint.inner().key == *token_b_mint.inner().key {
-      return Err(ProtocolError::InvalidTokenMint.into());
-    }
-
-    let mut amm_info = AmmInfo::load_mut(onesol_amm_info_acc, false)?;
-    let amm_account_flags = amm_info.flags()?;
-    if amm_account_flags.contains(AccountFlag::Initialized) {
+    let is_initialized = match AmmInfo::unpack(&onesol_amm_info_acc.data.borrow()) {
+      Ok(amm_info) => amm_info
+        .flags()
+        .map(|x| x.contains(AccountFlag::Initialized))
+        .unwrap_or(false),
+      Err(_) => false,
+    };
+    if is_initialized {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
-    amm_info.account_flags = (AccountFlag::Initialized | AccountFlag::AmmInfo).bits();
-    amm_info.nonce = data.nonce;
-    amm_info.owner = *owner_account_info.key;
-    amm_info.token_program_id = *spl_token_program.inner().key;
-    amm_info.token_a_vault = *token_a_vault.inner().key;
-    amm_info.token_a_mint = *token_a_mint.inner().key;
-    amm_info.token_b_vault = *token_b_vault.inner().key;
-    amm_info.token_b_mint = *token_b_mint.inner().key;
-    amm_info.output_data = OutputData::new();
+    let amm_info = AmmInfo {
+      account_flags: (AccountFlag::Initialized | AccountFlag::AmmInfo).bits(),
+      nonce: data.nonce,
+      owner: *owner_account_info.key,
+      token_program_id: *spl_token_program.inner().key,
+      token_a_vault: *token_a.account.inner().key,
+      token_a_mint: *token_a.mint.inner().key,
+      token_b_vault: *token_b.account.inner().key,
+      token_b_mint: *token_b.mint.inner().key,
+      output_data: OutputData::new(),
+    };
+    AmmInfo::pack(amm_info, &mut onesol_amm_info_acc.data.borrow_mut())?;
     Ok(())
   }
 
@@ -148,7 +151,8 @@ impl Processor {
       data.nonce,
     )?;
 
-    let amm_info = AmmInfo::load_mut(amm_info_acc_info, true)?;
+    let amm_info = AmmInfo::unpack(&amm_info_acc_info.data.borrow())
+      .map_err(|_| ProtocolError::InvalidAccountData)?;
     if amm_info.nonce != data.nonce {
       return Err(ProtocolError::InvalidNonce.into());
     }
@@ -166,9 +170,16 @@ impl Processor {
     if *dex_market_acc_info.owner != dex_program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
-    let mut dex_market_info = DexMarketInfo::load_mut(onesol_market_acc_info, false)?;
-    let account_flags = dex_market_info.flags()?;
-    if account_flags.contains(AccountFlag::Initialized) {
+
+    let is_initialized = match DexMarketInfo::unpack(&onesol_market_acc_info.data.borrow()) {
+      Ok(dex_market_info) => dex_market_info
+        .flags()
+        .map(|x| x.contains(AccountFlag::Initialized))
+        .unwrap_or(false),
+      Err(_) => false,
+    };
+
+    if is_initialized {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
 
@@ -182,13 +193,16 @@ impl Processor {
       data.nonce,
     )?;
 
-    dex_market_info.account_flags = (AccountFlag::Initialized | AccountFlag::DexMarketInfo).bits();
-    dex_market_info.amm_info = *amm_info_acc_info.key;
-    dex_market_info.dex_program_id = dex_program_id;
-    dex_market_info.market = *dex_market_acc_info.key;
-    dex_market_info.pc_mint = market_pc_mint;
-    dex_market_info.coin_mint = market_coin_mint;
-    dex_market_info.open_orders = *dex_open_orders_info.key;
+    let obj = DexMarketInfo {
+      account_flags: (AccountFlag::Initialized | AccountFlag::DexMarketInfo).bits(),
+      amm_info: *amm_info_acc_info.key,
+      dex_program_id: dex_program_id,
+      market: *dex_market_acc_info.key,
+      pc_mint: market_pc_mint,
+      coin_mint: market_coin_mint,
+      open_orders: *dex_open_orders_info.key,
+    };
+    DexMarketInfo::pack(obj, &mut dex_market_acc_info.data.borrow_mut())?;
     Ok(())
   }
 
