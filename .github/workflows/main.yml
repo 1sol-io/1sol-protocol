@@ -51,10 +51,10 @@ jobs:
       
       - name: install solana cli
         run: |
-          sh -c "$(curl -sSfL https://release.solana.com/v1.8.1/install)"
+          sh -c "$(curl -sSfL https://release.solana.com/v1.8.3/install)"
           echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
       # Runs a set of commands using the runners shell
       - name: run test
         run: |
-          cargo test
+          cargo test-bpf --manifest-path=./src/program-rust/Cargo.toml

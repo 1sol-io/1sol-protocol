@@ -2,8 +2,8 @@
 
 use crate::{
   account_parser::{
-    validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
-    StableSwapArgs, TokenAccount, TokenAccountAndMint, TokenMint, UserArgs,
+    validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SerumDexMarket, SplTokenProgram,
+    SplTokenSwapArgs, StableSwapArgs, TokenAccount, TokenAccountAndMint, TokenMint, UserArgs,
   },
   error::ProtocolError,
   instruction::{
@@ -15,7 +15,6 @@ use crate::{
 };
 use arrayref::array_refs;
 // use safe_transmute::to_bytes::transmute_one_to_bytes;
-use safe_transmute::to_bytes::transmute_to_bytes;
 use serum_dex::matching::Side as DexSide;
 use solana_program::{
   account_info::{next_account_info, AccountInfo},
@@ -26,9 +25,10 @@ use solana_program::{
   program_error::ProgramError,
   program_pack::Pack,
   pubkey::Pubkey,
-  sysvar::rent,
+  rent::Rent,
+  sysvar::{self, Sysvar},
 };
-use std::{convert::identity, num::NonZeroU64};
+use std::num::NonZeroU64;
 // use std::convert::identity;
 
 /// Program state handler.
@@ -82,9 +82,23 @@ impl Processor {
     let token_b_mint_info = next_account_info(account_info_iter)?;
     let spl_token_program_info = next_account_info(account_info_iter)?;
 
+    // check onesol_amm_info_acc
     if *onesol_amm_info_acc.owner != *program_id {
       return Err(ProtocolError::InvalidAmmInfoAccount.into());
     }
+    let rent = Rent::get()?;
+    if rent.is_exempt(
+      onesol_amm_info_acc.lamports(),
+      onesol_amm_info_acc.data_len(),
+    ) {
+      return Err(ProtocolError::NotRentExempt.into());
+    }
+    validate_authority_pubkey(
+      authority_info.key,
+      program_id,
+      onesol_amm_info_acc.key,
+      data.nonce,
+    )?;
 
     let token_a = TokenAccountAndMint::new(
       TokenAccount::new(token_a_vault_info)?,
@@ -97,13 +111,6 @@ impl Processor {
       TokenMint::new(token_b_mint_info)?,
     )?;
     token_b.account.check_owner(authority_info.key)?;
-
-    validate_authority_pubkey(
-      authority_info.key,
-      program_id,
-      onesol_amm_info_acc.key,
-      data.nonce,
-    )?;
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_info)?;
 
@@ -149,14 +156,22 @@ impl Processor {
 
     let dex_program_id = *dex_program_id_info.key;
 
-    if *amm_info_acc_info.owner != *program_id {
-      return Err(ProtocolError::InvalidAmmInfoAccount.into());
-    }
-
+    // check onesol_market_acc_info
     if *onesol_market_acc_info.owner != *program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
+    let rent = Rent::get()?;
+    if !rent.is_exempt(
+      onesol_market_acc_info.lamports(),
+      onesol_market_acc_info.data_len(),
+    ) {
+      return Err(ProtocolError::NotRentExempt.into());
+    }
 
+    // check amm_info_acc_info
+    if *amm_info_acc_info.owner != *program_id {
+      return Err(ProtocolError::InvalidAmmInfoAccount.into());
+    }
     validate_authority_pubkey(
       authority_info.key,
       program_id,
@@ -164,31 +179,35 @@ impl Processor {
       data.nonce,
     )?;
 
-    if *dex_open_orders_info.owner != dex_program_id {
-      return Err(ProtocolError::InvalidProgramAddress.into());
-    }
-
     let amm_info = AmmInfo::unpack(&amm_info_acc_info.data.borrow())
       .map_err(|_| ProtocolError::InvalidAccountData)?;
     if amm_info.nonce != data.nonce {
       return Err(ProtocolError::InvalidNonce.into());
     }
-    let market = serum_dex_order::load_market_state(dex_market_acc_info)?;
 
-    let market_coin_mint = Pubkey::new(transmute_to_bytes(&identity(market.coin_mint)));
-    let market_pc_mint = Pubkey::new(transmute_to_bytes(&identity(market.pc_mint)));
+    if *dex_open_orders_info.owner != dex_program_id {
+      return Err(ProtocolError::InvalidProgramAddress.into());
+    }
+    let market = SerumDexMarket::new(dex_market_acc_info)?;
+    // let market = serum_dex_order::load_market_state(dex_market_acc_info)?;
 
+    let market_coin_mint = market.coin_mint()?;
+    let market_pc_mint = market.pc_mint()?;
+
+    if amm_info.token_a_mint == amm_info.token_b_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
     if market_pc_mint != amm_info.token_a_mint && market_pc_mint != amm_info.token_b_mint {
       return Err(ProtocolError::InvalidTokenMint.into());
     }
-    if market_coin_mint != amm_info.token_a_mint && market_coin_mint != amm_info.token_a_mint {
+    if market_coin_mint != amm_info.token_a_mint && market_coin_mint != amm_info.token_b_mint {
       return Err(ProtocolError::InvalidTokenMint.into());
     }
-    if *dex_market_acc_info.owner != dex_program_id {
+    if *market.inner().owner != dex_program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
 
-    if !rent::check_id(rent_acc_info.key) {
+    if !sysvar::rent::check_id(rent_acc_info.key) {
       return Err(ProtocolError::InvalidRentAccount.into());
     }
 
@@ -951,7 +970,7 @@ impl Processor {
     let orderbook = serum_dex_order::OrderbookClient {
       market: serum_dex_order::MarketAccounts {
         market: dex_args.market.inner(),
-        open_orders: dex_args.open_order_acc,
+        open_orders: dex_args.open_orders.inner(),
         request_queue: dex_args.request_queue_acc,
         event_queue: dex_args.event_queue_acc,
         bids: dex_args.bids_acc,

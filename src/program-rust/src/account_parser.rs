@@ -148,6 +148,37 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
   Ok(())
 });
 
+declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
+  if !account.is_writable {
+    return Err(ProtocolError::ReadableAccount);
+  }
+  let account_data = account
+    .try_borrow_data()
+    .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+  // [5,8,32,32,8,8,8,8,16,16,16*128,8*128,8,7]
+  const MARKET_LEN: usize = 3228;
+  if account_data.len() != MARKET_LEN {
+    return Err(ProtocolError::InvalidSerumDexMarketAccount);
+  }
+  let (_, data, _) = array_refs![&account_data, 5; ..; 7];
+  let flag_data = u64::from_le_bytes(*array_ref![data, 0, 8]);
+  /**
+   *  Initialized = 1u64 << 0,
+   *  Market = 1u64 << 1,
+   */
+  // BitFlags::
+  // if flag_data != 3768656749939 {
+  if flag_data != (AccountFlag::Initialized | AccountFlag::OpenOrders).bits() {
+    msg!(
+      "flag_data: {:?}, expect: {:?}",
+      flag_data,
+      (AccountFlag::Initialized | AccountFlag::OpenOrders).bits()
+    );
+    return Err(ProtocolError::InvalidSerumDexMarketAccount);
+  }
+  Ok(())
+});
+
 #[allow(unused)]
 fn unpack_coption_key(src: &[u8; 36]) -> ProtocolResult<Option<Pubkey>> {
   let (tag, body) = array_refs![src, 4, 32];
@@ -235,6 +266,48 @@ impl<'a, 'b: 'a> TokenAccount<'a, 'b> {
   //   }
   //   Err(ProtocolError::InvalidDelegate)
   // }
+}
+
+#[allow(unused)]
+impl<'a, 'b: 'a> SerumDexMarket<'a, 'b> {
+  pub fn coin_mint(self) -> ProtocolResult<Pubkey> {
+    let account_data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    let (_, data, _) = array_refs![&account_data, 5; ..; 7];
+    Ok(Pubkey::new_from_array(*array_ref![data, 48, 32]))
+  }
+
+  pub fn pc_mint(self) -> ProtocolResult<Pubkey> {
+    let account_data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    let (_, data, _) = array_refs![&account_data, 5; ..; 7];
+    Ok(Pubkey::new_from_array(*array_ref![data, 80, 32]))
+  }
+}
+
+#[allow(unused)]
+impl<'a, 'b: 'a> SerumDexOpenOrders<'a, 'b> {
+  pub fn market(self) -> ProtocolResult<Pubkey> {
+    let account_data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    let (_, data, _) = array_refs![&account_data, 5; ..; 7];
+    Ok(Pubkey::new_from_array(*array_ref![data, 8, 32]))
+  }
+
+  pub fn owner(self) -> ProtocolResult<Pubkey> {
+    let account_data = self
+      .inner()
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    let (_, data, _) = array_refs![&account_data, 5; ..; 7];
+    Ok(Pubkey::new_from_array(*array_ref![data, 40, 32]))
+  }
 }
 
 #[derive(Copy, Clone)]
@@ -504,7 +577,7 @@ pub struct SerumDexArgs<'a, 'b: 'a> {
   pub coin_vault_acc: TokenAccount<'a, 'b>,
   pub pc_vault_acc: TokenAccount<'a, 'b>,
   pub vault_signer_acc: &'a AccountInfo<'b>,
-  pub open_order_acc: &'a AccountInfo<'b>,
+  pub open_orders: SerumDexOpenOrders<'a, 'b>,
   pub rent_sysvar_acc: &'a AccountInfo<'b>,
   pub program_acc: &'a AccountInfo<'b>,
 }
@@ -533,6 +606,13 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     if *market.inner().owner != *program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
+    let open_orders = SerumDexOpenOrders::new(open_order_acc)?;
+    if *open_orders.inner().owner != *program_acc.key {
+      return Err(ProtocolError::InvalidProgramAddress);
+    }
+    if open_orders.market()? != *market.pubkey() {
+      return Err(ProtocolError::InvalidSerumDexMarketAccount);
+    }
 
     Ok(SerumDexArgs {
       market,
@@ -543,7 +623,7 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
       coin_vault_acc: TokenAccount::new(coin_vault_acc)?,
       pc_vault_acc: TokenAccount::new(pc_vault_acc)?,
       vault_signer_acc,
-      open_order_acc,
+      open_orders,
       rent_sysvar_acc,
       program_acc,
     })
@@ -702,5 +782,60 @@ impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
     } else {
       Ok((&self.token_b, &self.token_a))
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use solana_sdk::{account_info::AccountInfo, pubkey::Pubkey};
+  use std::str::FromStr;
+
+  #[test]
+  fn test_serum_dex_market() {
+    let market_data = "GmH4gu6PYUUKDZqX8AT2ZH7MKQkqEiK1rkgus44yrCJvP7UDfLpQzbFKzfgUx1oSffopN2NGno33fnjhD37awk2MPJrXgRiQjwQWWwspgrrjXVKhP87vynWu4FzjGgx8USsnBa5mNEZb2rKvNmVZKekzZUpdSAiXEMbVvEpAn1tQTderQCh69t84sPfcVfseAPEKyJYcAiFLCTrKFmQ3SVQiartpqiySprqLqkqto5Z3LAVRGBvVvcinYuZBN49ZbBaMGxXS9wt6tXN8ZqmoZMfYvc3un68DuJ5vyRPyiYz56LqovWnbjjXY76rRPzsbXR3EqYNMyCFjoqxnsH3LLJVYXwT11ggvUery3J8bhDbdvSJaacCyTEuaMuWXjJMcsBxW2NQLAPzasX8vu1uTDjqnvCkZKhYcGtCpiLddLQEMXu6mTEE6ZmT73rHCLaoGKPSYxuVkunGb4AtkU4mSUfWw3EbKc6s6sEvgi5Ec47RYGdNDMK31jENakYtSAweGRSin1iB7G11FU1xhNE";
+    let mut data = bs58::decode(market_data).into_vec().unwrap();
+    let pubkey = Pubkey::from_str("9wFFyRfZBsuAha4YcuxcXLKwMxJR43S7fPfQLusDBzvT").unwrap();
+    let owner = Pubkey::from_str("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin").unwrap();
+    let mut lamports = 1003591360u64;
+    let account_info = AccountInfo::new(
+      &pubkey,
+      false,
+      true,
+      &mut lamports,
+      &mut data[..],
+      &owner,
+      false,
+      246,
+    );
+    let market = SerumDexMarket::new(&account_info).unwrap();
+    let expect_coin_mint = Pubkey::from_str("So11111111111111111111111111111111111111112").unwrap();
+    let expect_pc_mint = Pubkey::from_str("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").unwrap();
+    assert_eq!(market.coin_mint().unwrap(), expect_coin_mint);
+    assert_eq!(market.pc_mint().unwrap(), expect_pc_mint);
+  }
+
+  #[test]
+  fn test_serum_dex_open_orders() {
+    let market_data = "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";
+    let mut data = bs58::decode(market_data).into_vec().unwrap();
+    let pubkey = Pubkey::from_str("HRk9CMrpq7Jn9sh7mzxE8CChHG8dneX9p475QKz4Fsfc").unwrap();
+    let owner = Pubkey::from_str("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin").unwrap();
+    let mut lamports = 1003591360u64;
+    let account_info = AccountInfo::new(
+      &pubkey,
+      false,
+      true,
+      &mut lamports,
+      &mut data[..],
+      &owner,
+      false,
+      246,
+    );
+    let open_orders = SerumDexOpenOrders::new(&account_info).unwrap();
+    let expect_market = Pubkey::from_str("9wFFyRfZBsuAha4YcuxcXLKwMxJR43S7fPfQLusDBzvT").unwrap();
+    let expect_owner = Pubkey::from_str("5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1").unwrap();
+    assert_eq!(open_orders.market().unwrap(), expect_market);
+    assert_eq!(open_orders.owner().unwrap(), expect_owner);
   }
 }

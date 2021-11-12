@@ -25,9 +25,12 @@ stable-swap-client = "1.5.2"
 
 [dev-dependencies]
 solana-sdk = "1.8.3"
+bs58 = "*"
 
 [lib]
 crate-type = ["cdylib", "lib"]
+doctest = false
+
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

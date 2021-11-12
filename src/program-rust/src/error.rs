@@ -187,6 +187,9 @@ pub enum ProtocolError {
 
   #[error("pack data failed")]
   PackDataFailed,
+
+  #[error("not rent exempt")]
+  NotRentExempt,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -267,6 +270,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::PackDataFailed => {
         msg!("Error: PackDataFailed")
+      }
+      ProtocolError::NotRentExempt => {
+        msg!("Error: NotRentExempt")
       }
     }
   }
