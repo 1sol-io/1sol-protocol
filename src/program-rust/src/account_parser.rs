@@ -301,7 +301,7 @@ impl<'a, 'b: 'a> UserArgs<'a, 'b> {
 
 pub struct AmmInfoArgs<'a, 'b: 'a> {
   pub amm_info: AmmInfo,
-  pub amm_info_key: &'a Pubkey,
+  pub amm_info_acc_info: &'a AccountInfo<'b>,
   pub authority_acc_info: &'a AccountInfo<'b>,
   pub token_a_account: TokenAccount<'a, 'b>,
   pub token_b_account: TokenAccount<'a, 'b>,
@@ -326,6 +326,10 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
     if *amm_info_acc.owner != *program_id {
       return Err(ProtocolError::InvalidOwner);
     }
+    if !amm_info_acc.is_writable {
+      msg!("[ERROR] amm_info account it not writable");
+      return Err(ProtocolError::InvalidAmmInfoAccount);
+    }
     // Pubkey::create_program_address(seeds, program_id)
     let data = amm_info_acc
       .try_borrow_data()
@@ -346,7 +350,7 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
     token_b_account.check_owner(authority_acc_info.key)?;
     Ok(AmmInfoArgs {
       amm_info,
-      amm_info_key: amm_info_acc.key,
+      amm_info_acc_info: amm_info_acc,
       authority_acc_info,
       token_a_account,
       token_b_account,
@@ -369,6 +373,59 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
     } else {
       Ok((&self.token_b_account, &self.token_a_account))
     }
+  }
+
+  pub fn record(
+    &self,
+    source_token_account_mint: &Pubkey,
+    destination_token_account_mint: &Pubkey,
+    amount_in: u64,
+    amount_out: u64,
+    fee: u64,
+  ) -> ProtocolResult<()> {
+    let mut amm_info = self.amm_info;
+
+    if *source_token_account_mint == amm_info.token_a_mint
+      && *destination_token_account_mint == amm_info.token_b_mint
+    {
+      amm_info
+        .output_data
+        .token_a_in_amount
+        .checked_add(amount_in as u128)
+        .map(|x| amm_info.output_data.token_a_in_amount = x);
+      amm_info
+        .output_data
+        .token_b_out_amount
+        .checked_add(amount_out as u128)
+        .map(|x| amm_info.output_data.token_b_out_amount = x);
+      amm_info
+        .output_data
+        .token_a2b_fee
+        .checked_add(fee)
+        .map(|x| amm_info.output_data.token_a2b_fee = x);
+    } else if *source_token_account_mint == amm_info.token_b_mint
+      && *destination_token_account_mint == amm_info.token_a_mint
+    {
+      amm_info
+        .output_data
+        .token_b_in_amount
+        .checked_add(amount_in as u128)
+        .map(|x| amm_info.output_data.token_b_in_amount = x);
+      amm_info
+        .output_data
+        .token_a_out_amount
+        .checked_add(amount_out as u128)
+        .map(|x| amm_info.output_data.token_a_out_amount = x);
+      amm_info
+        .output_data
+        .token_b2a_fee
+        .checked_add(fee)
+        .map(|x| amm_info.output_data.token_b2a_fee = x);
+    } else {
+      return Ok(());
+    }
+    AmmInfo::pack(amm_info, &mut self.amm_info_acc_info.data.borrow_mut())
+      .map_err(|_| ProtocolError::PackDataFailed)
   }
 }
 

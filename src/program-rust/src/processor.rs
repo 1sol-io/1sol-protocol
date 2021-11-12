@@ -269,7 +269,7 @@ impl Processor {
 
     // transfer from user token_source_account to amm_source_token_account
     Self::token_transfer(
-      amm_info_args.amm_info_key,
+      amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       user_args.token_source_account.inner(),
       amm_source_token_acc.inner(),
@@ -287,7 +287,7 @@ impl Processor {
       data.amount_in
     );
 
-    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let base_bytes = amm_info_args.amm_info_acc_info.key.to_bytes();
     let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
     let signers = &[&authority_signature_seeds[..]];
 
@@ -332,11 +332,21 @@ impl Processor {
       .unwrap_or(0);
     let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
 
+    amm_info_args
+      .record(
+        &user_source_token_mint,
+        &user_destination_token_mint,
+        from_amount_changed,
+        to_amount,
+        fee,
+      )
+      .ok();
+
     // Transfer OnesolB -> AliceB
     msg!("transfer to user destination, amount: {}", to_amount);
     sol_log_compute_units();
     Self::token_transfer(
-      amm_info_args.amm_info_key,
+      amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       amm_destination_token_acc.inner(),
       user_args.token_destination_account.inner(),
@@ -388,7 +398,7 @@ impl Processor {
 
     // transfer from user token_source_account to amm_source_token_account
     Self::token_transfer(
-      amm_info_args.amm_info_key,
+      amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       user_args.token_source_account.inner(),
       amm_source_token_acc.inner(),
@@ -406,7 +416,7 @@ impl Processor {
       data.amount_in
     );
 
-    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let base_bytes = amm_info_args.amm_info_acc_info.key.to_bytes();
     let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
     let signers = &[&authority_signature_seeds[..]];
 
@@ -450,12 +460,21 @@ impl Processor {
       .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
       .unwrap_or(0);
     let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
+    amm_info_args
+      .record(
+        &user_source_token_mint,
+        &user_destination_token_mint,
+        from_amount_changed,
+        to_amount,
+        fee,
+      )
+      .ok();
 
     // Transfer OnesolB -> AliceB
     msg!("transfer to user destination, amount: {}", to_amount);
     sol_log_compute_units();
     Self::token_transfer(
-      amm_info_args.amm_info_key,
+      amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       amm_destination_token_acc.inner(),
       user_args.token_destination_account.inner(),
@@ -512,7 +531,7 @@ impl Processor {
     }
     // transfer from user token_source_account to amm_source_token_account
     Self::token_transfer(
-      amm_info_args.amm_info_key,
+      amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       user_args.token_source_account.inner(),
       amm_source_token_acc.inner(),
@@ -530,7 +549,7 @@ impl Processor {
       data.amount_in
     );
 
-    let base_bytes = amm_info_args.amm_info_key.to_bytes();
+    let base_bytes = amm_info_args.amm_info_acc_info.key.to_bytes();
     let authority_signature_seeds = [&base_bytes[..32], &[amm_info_args.nonce()]];
     let signers = &[&authority_signature_seeds[..]];
     Self::process_step_serumdex(
@@ -575,9 +594,19 @@ impl Processor {
       .unwrap_or(0);
     let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
 
+    amm_info_args
+      .record(
+        &user_source_token_mint,
+        &user_destination_token_mint,
+        from_amount_changed,
+        to_amount,
+        fee,
+      )
+      .ok();
+
     msg!("transfer to user destination, amount: {}", to_amount);
     Self::token_transfer(
-      amm_info_args.amm_info_key,
+      amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       amm_destination_token_acc.inner(),
       user_args.token_destination_account.inner(),
@@ -670,7 +699,7 @@ impl Processor {
 
     // step2
 
-    let base_bytes = step2_amm_info_args.amm_info_key.to_bytes();
+    let base_bytes = step2_amm_info_args.amm_info_acc_info.key.to_bytes();
     let authority_signature_seeds = [&base_bytes[..32], &[step2_amm_info_args.nonce()]];
     let signers = &[&authority_signature_seeds[..]];
 
@@ -720,10 +749,19 @@ impl Processor {
       .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
       .unwrap_or(0);
     let to_amount = to_amount_include_fee.checked_sub(fee).unwrap();
+    step2_amm_info_args
+      .record(
+        &step2_source_token_account.mint()?,
+        &step2_destination_token_account.mint()?,
+        from_amount_changed,
+        to_amount,
+        fee,
+      )
+      .ok();
 
     msg!("transfer to user destination, amount: {}", to_amount);
     Self::token_transfer(
-      step2_amm_info_args.amm_info_key,
+      step2_amm_info_args.amm_info_acc_info.key,
       spl_token_program.inner(),
       step2_destination_token_account.inner(),
       user_args.token_destination_account.inner(),

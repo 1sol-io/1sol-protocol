@@ -184,6 +184,9 @@ pub enum ProtocolError {
 
   #[error("invalid amm-info account")]
   InvalidAmmInfoAccount,
+
+  #[error("pack data failed")]
+  PackDataFailed,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -261,6 +264,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidAmmInfoAccount => {
         msg!("Error: InvalidAmmInfoAccount")
+      }
+      ProtocolError::PackDataFailed => {
+        msg!("Error: PackDataFailed")
       }
     }
   }
