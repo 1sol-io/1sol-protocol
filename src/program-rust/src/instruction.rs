@@ -89,23 +89,34 @@ pub enum OneSolInstruction {
   /// 0. `[writable, signer]` New 1solProtocol AmmInfo account to create.
   /// 1. `[]` $authority derived from `create_program_address(&[1solProtocolAmmInfo account])`
   /// 2. `[]` Owner account
-  /// 3. `[]` token_a_vault Account. Must be non zero, owned by 1sol.
+  /// 3. `[]` token_a_vault Account. Must be non zero, owned by $authority.
   /// 4. `[]` token_a mint Account.
-  /// 5. `[]` token_b_vault Account.
+  /// 5. `[]` token_b_vault Account. Must owned by $authority.
   /// 6. `[]` token_b_mint Account.
   /// 7. '[]` Spl-Token program id
   InitializeAmmInfo(Initialize),
 
   /// Create Dex Market
   ///
-  /// 0. `[writable, signer]` new DexMarket account to create.
-  /// 1. `[]` $authority derived from `create_program_address(&[DexMarket account])`
+  /// 0. `[writable, signer]` new DexMarketInfo account to create.
+  /// 1. `[]` $authority `AmmInfo's authority`
   /// 2. `[]` AmmInfo account.
   /// 3. `[writable]` market account. SerumDexMarket account.
   /// 4. `[writable]` open_orders account. SerumDexOpenOrders account.
   /// 5. `[]` the rend sysvar.
   /// 6. `[]` SerumDex ProgramId.
   InitDexMarketOpenOrders(Initialize),
+
+  /// Update DexMarket OpenOrders
+  ///
+  /// 0. `[writable]` DexMarketInfo account to update.
+  /// 1. `[]` $authority derived from `create_program_address(&[DexMarketInfo account])`
+  /// 2. `[]` AmmInfo account.
+  /// 3. `[writable]` market account. SerumDexMarket account.
+  /// 4. `[writable]` open_orders account. SerumDexOpenOrders account.
+  /// 5. `[]` the rend sysvar.
+  /// 6. `[]` SerumDex ProgramId.
+  UpdateDexMarketOpenOrders,
 
   /// Swap the tokens in the pool.
   ///
@@ -232,6 +243,7 @@ impl OneSolInstruction {
       4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
       5 => Self::SwapTwoSteps(SwapTwoStepsInstruction::unpack(rest)?),
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
+      7 => Self::UpdateDexMarketOpenOrders,
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }

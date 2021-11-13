@@ -55,6 +55,9 @@ impl Processor {
         msg!("Instruction: Initialize Dex Market Open Orders");
         Self::process_initialize_dex_mark_open_orders(program_id, &data, accounts)
       }
+      OneSolInstruction::UpdateDexMarketOpenOrders => {
+        Self::process_update_dex_mark_open_orders(program_id, accounts)
+      }
       OneSolInstruction::SwapStableSwap(data) => {
         msg!("Instruction: Swap StableSwap");
         Self::process_swap_stableswap(program_id, &data, accounts)
@@ -104,13 +107,13 @@ impl Processor {
       TokenAccount::new(token_a_vault_info)?,
       TokenMint::new(token_a_mint_info)?,
     )?;
-    token_a.account.check_owner(authority_info.key)?;
+    token_a.account.check_owner(authority_info.key, true)?;
 
     let token_b = TokenAccountAndMint::new(
       TokenAccount::new(token_b_vault_info)?,
       TokenMint::new(token_b_mint_info)?,
     )?;
-    token_b.account.check_owner(authority_info.key)?;
+    token_b.account.check_owner(authority_info.key, true)?;
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_info)?;
 
@@ -246,6 +249,95 @@ impl Processor {
     Ok(())
   }
 
+  /// process update DexMarketInfo OpenOrders
+  pub fn process_update_dex_mark_open_orders(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+  ) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let protocol_market_info_acc = next_account_info(account_info_iter)?;
+    let authority_info = next_account_info(account_info_iter)?;
+    let amm_info_acc = next_account_info(account_info_iter)?;
+    let dex_market_acc_info = next_account_info(account_info_iter)?;
+    let dex_open_orders_info = next_account_info(account_info_iter)?;
+    let rent_acc_info = next_account_info(account_info_iter)?;
+    let dex_program_id_info = next_account_info(account_info_iter)?;
+
+    let dex_program_id = *dex_program_id_info.key;
+
+    if *amm_info_acc.owner != *program_id {
+      return Err(ProtocolError::InvalidAmmInfoAccount.into());
+    }
+    if *protocol_market_info_acc.owner != *program_id {
+      return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
+    }
+    if !protocol_market_info_acc.is_writable {
+      return Err(ProtocolError::ReadableAccount.into());
+    }
+    let amm_info = AmmInfo::unpack(&amm_info_acc.data.borrow())
+      .map_err(|_| ProtocolError::InvalidAmmInfoAccount)?;
+    if amm_info.account_flags != (AccountFlag::Initialized | AccountFlag::AmmInfo).bits() {
+      return Err(ProtocolError::InvalidAccountFlags.into());
+    }
+
+    let protocol_market_info = DexMarketInfo::unpack(&protocol_market_info_acc.data.borrow())
+      .map_err(|e| {
+        msg!("DexMarketInfo::unpack err: {}", e);
+        ProtocolError::InvalidDexMarketInfoAccount
+      })?;
+    if protocol_market_info.account_flags
+      != (AccountFlag::Initialized | AccountFlag::DexMarketInfo).bits()
+    {
+      return Err(ProtocolError::InvalidAccountFlags.into());
+    }
+    if protocol_market_info.amm_info != *amm_info_acc.key {
+      msg!("dex_market_info.amm_info != amm_info_acc.key");
+      return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
+    }
+
+    let market = SerumDexMarket::new(dex_market_acc_info)?;
+
+    if protocol_market_info.market != *dex_market_acc_info.key {
+      msg!("protocol_market_info.market != dex_market_acc_info.key");
+      return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
+    }
+
+    let market_coin_mint = market.coin_mint()?;
+    let market_pc_mint = market.pc_mint()?;
+
+    if amm_info.token_a_mint == amm_info.token_b_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if market_pc_mint != amm_info.token_a_mint && market_pc_mint != amm_info.token_b_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if market_coin_mint != amm_info.token_a_mint && market_coin_mint != amm_info.token_b_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if *market.inner().owner != dex_program_id {
+      return Err(ProtocolError::InvalidProgramAddress.into());
+    }
+    if !sysvar::rent::check_id(rent_acc_info.key) {
+      return Err(ProtocolError::InvalidRentAccount.into());
+    }
+
+    serum_dex_order::invoke_init_open_orders(
+      amm_info_acc.key,
+      &dex_program_id,
+      dex_open_orders_info,
+      authority_info,
+      dex_market_acc_info,
+      rent_acc_info,
+      amm_info.nonce,
+    )?;
+
+    let mut obj = protocol_market_info;
+    obj.open_orders = *dex_open_orders_info.key;
+
+    DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
+    Ok(())
+  }
+
   /// Processes an [Swap](enum.Instruction.html).
   pub fn process_swap_spltokenswap(
     program_id: &Pubkey,
@@ -265,8 +357,6 @@ impl Processor {
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
     let amm_info_args = AmmInfoArgs::with_parsed_args(program_id, amm_info_accounts)?;
-
-    // let spl_token_swap_args = SplTokenSwapArgs::with_parsed_args(other_accounts)?;
 
     msg!(
       "source_token_account amount: {}",

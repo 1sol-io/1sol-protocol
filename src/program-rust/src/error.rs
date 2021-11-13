@@ -185,6 +185,9 @@ pub enum ProtocolError {
   #[error("invalid amm-info account")]
   InvalidAmmInfoAccount,
 
+  #[error("invalid dex-market-info account")]
+  InvalidDexMarketInfoAccount,
+
   #[error("pack data failed")]
   PackDataFailed,
 
@@ -273,6 +276,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::NotRentExempt => {
         msg!("Error: NotRentExempt")
+      }
+      ProtocolError::InvalidDexMarketInfoAccount => {
+        msg!("Error: InvalidDexMarketInfoAccount")
       }
     }
   }
