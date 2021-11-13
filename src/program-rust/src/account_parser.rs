@@ -4,7 +4,7 @@ use crate::{
   state::AmmInfo,
 };
 use arrayref::{array_ref, array_refs};
-use serum_dex::{matching::Side as DexSide, state::AccountFlag};
+use serum_dex::{matching::Side as DexSide, state::AccountFlag as SerumAccountFlag};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
 
 macro_rules! declare_validated_account_wrapper {
@@ -137,11 +137,11 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
    */
   // BitFlags::
   // if flag_data != 3768656749939 {
-  if flag_data != (AccountFlag::Initialized | AccountFlag::Market).bits() {
+  if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::Market).bits() {
     msg!(
       "flag_data: {:?}, expect: {:?}",
       flag_data,
-      (AccountFlag::Initialized | AccountFlag::Market).bits()
+      (SerumAccountFlag::Initialized | SerumAccountFlag::Market).bits()
     );
     return Err(ProtocolError::InvalidSerumDexMarketAccount);
   }
@@ -168,11 +168,11 @@ declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
    */
   // BitFlags::
   // if flag_data != 3768656749939 {
-  if flag_data != (AccountFlag::Initialized | AccountFlag::OpenOrders).bits() {
+  if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits() {
     msg!(
       "flag_data: {:?}, expect: {:?}",
       flag_data,
-      (AccountFlag::Initialized | AccountFlag::OpenOrders).bits()
+      (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits()
     );
     return Err(ProtocolError::InvalidSerumDexMarketAccount);
   }
@@ -237,10 +237,13 @@ impl<'a, 'b: 'a> TokenAccount<'a, 'b> {
     unpack_coption_key(array_ref![data, 72, 36])
   }
 
-  pub fn check_owner(self, authority: &Pubkey) -> ProtocolResult<()> {
+  pub fn check_owner(self, authority: &Pubkey, strict: bool) -> ProtocolResult<()> {
     let owner = self.owner()?;
     if *authority == owner {
       return Ok(());
+    }
+    if strict {
+      return Err(ProtocolError::InvalidOwner);
     }
     let delegate = self.delegate()?;
     match delegate {
@@ -359,7 +362,7 @@ impl<'a, 'b: 'a> UserArgs<'a, 'b> {
     let token_source_account = TokenAccount::new(token_source_acc_info)?;
     let token_destination_account = TokenAccount::new(token_destination_acc_info)?;
     let source_account_owner = SignerAccount::new(source_account_owner)?;
-    token_source_account.check_owner(source_account_owner.inner().key)?;
+    token_source_account.check_owner(source_account_owner.inner().key, false)?;
     if token_source_account.mint() == token_destination_account.mint() {
       return Err(ProtocolError::InvalidTokenAccount);
     }
@@ -417,10 +420,16 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
     )?;
 
     let token_a_account = TokenAccount::new(token_a_acc)?;
-    token_a_account.check_owner(authority_acc_info.key)?;
+    #[cfg(feature = "production")]
+    token_a_account.check_owner(authority_acc_info.key, true)?;
+    #[cfg(not(feature = "production"))]
+    token_a_account.check_owner(authority_acc_info.key, false)?;
 
     let token_b_account = TokenAccount::new(token_b_acc)?;
-    token_b_account.check_owner(authority_acc_info.key)?;
+    #[cfg(feature = "production")]
+    token_b_account.check_owner(authority_acc_info.key, true)?;
+    #[cfg(not(feature = "production"))]
+    token_b_account.check_owner(authority_acc_info.key, false)?;
     Ok(AmmInfoArgs {
       amm_info,
       amm_info_acc_info: amm_info_acc,

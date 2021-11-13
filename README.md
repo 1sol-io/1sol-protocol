@@ -1,5 +1,4 @@
-# 1sol protcol 
-
+# 1sol protocol
 
 ![Logo](https://cdn.jsdelivr.net/gh/solana-labs/ecosystem/img/1sol.svg)
 
@@ -11,11 +10,12 @@ So we decided to create 1Sol.
 
 ## Goals
 
- - Go-To Trading Portal: Be the go-to trading portal for trading on Solana.
- - One-Stop Aggregation Service: Integrate all kinds of DeFi and DEX.
- - Fool-Proof Operation: Provides the average user with information on prices, slippage and costs of all DEX on the web. Users can choose for themselves the one path that best suits them to trade.
+- Go-To Trading Portal: Be the go-to trading portal for trading on Solana.
+- One-Stop Aggregation Service: Integrate all kinds of DeFi and DEX.
+- Fool-Proof Operation: Provides the average user with information on prices, slippage and costs of all DEX on the web. Users can choose for themselves the one path that best suits them to trade.
 
 ## How to develop
+
 1. `yarn install`
 2. `yarn cluster:localhost`
 3. deploy your dev token-swap program
@@ -25,21 +25,23 @@ So we decided to create 1Sol.
 7. modify `token-swap` `serum-dex` `onesol-protocol` program id to your id
 8. run `yarn start` to test
 
-## Program id
-### devnet 
-`9Bj8zgNWT6UaNcXMgzMFrnH5Z13nQ6vFkRNxP743zZyr`
+## Program Deployments
+
+| Program | Devnet | Mainnet Beta |
+| ------- | ------ | ------------ |
+|1solProtocol| `9Bj8zgNWT6UaNcXMgzMFrnH5Z13nQ6vFkRNxP743zZyr` | |
 
 ## TODO
 
- - Link with Solana's official swap.
- - Link with Serum swap.
- - Link with [dexlab](https://www.dexlab.space/).
- - Link with Falcomp.
+- Link with Solana's official swap.
+- Link with Serum swap.
+- Link with [dexlab](https://www.dexlab.space/).
+- Link with Falcomp.
 
 ## Contacts
 
- - <b>Website</b>: [https://1sol.io](https://1sol.io)
- - <b>Twitter</b>: [https://twitter.com/1solProtocol](https://twitter.com/1solProtocol)
- - <b>Telegram</b>: [https://t.me/onesolcommunity](https://t.me/onesolcommunity)
- - <b>Discord</b>: [https://discord.gg/eR7VWCnAqb](https://discord.gg/eR7VWCnAqb)
- - <b>Medium</b>: [https://medium.com/@1solProtocol](https://medium.com/@1solProtocol)
+- <b>Website</b>: [https://1sol.io](https://1sol.io)
+- <b>Twitter</b>: [https://twitter.com/1solProtocol](https://twitter.com/1solProtocol)
+- <b>Telegram</b>: [https://t.me/onesolcommunity](https://t.me/onesolcommunity)
+- <b>Discord</b>: [https://discord.gg/eR7VWCnAqb](https://discord.gg/eR7VWCnAqb)
+- <b>Medium</b>: [https://medium.com/@1solProtocol](https://medium.com/@1solProtocol)
