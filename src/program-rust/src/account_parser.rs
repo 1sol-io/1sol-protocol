@@ -30,6 +30,15 @@ macro_rules! declare_validated_account_wrapper {
           pub fn pubkey(self) -> &'b Pubkey {
             self.0.key
           }
+
+          #[inline(always)]
+          #[allow(unused)]
+          pub fn check_writable(self) -> ProtocolResult<()> {
+            if !self.inner().is_writable {
+              return Err(ProtocolError::ReadonlyAccount)
+            }
+            Ok(())
+          }
       }
   }
 }
@@ -120,7 +129,7 @@ declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
 
 declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
   if !account.is_writable {
-    return Err(ProtocolError::ReadableAccount);
+    return Err(ProtocolError::ReadonlyAccount);
   }
   let data = account
     .try_borrow_data()
@@ -150,7 +159,7 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
 
 declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
   if !account.is_writable {
-    return Err(ProtocolError::ReadableAccount);
+    return Err(ProtocolError::ReadonlyAccount);
   }
   let account_data = account
     .try_borrow_data()
@@ -419,12 +428,28 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
       amm_info.nonce,
     )?;
 
+    if amm_info.token_a_vault != *token_a_acc.key {
+      msg!(
+        "token_a_vault: {}, token_a_acc: {}",
+        amm_info.token_a_vault,
+        token_a_acc.key
+      );
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
     let token_a_account = TokenAccount::new(token_a_acc)?;
     #[cfg(feature = "production")]
     token_a_account.check_owner(authority_acc_info.key, true)?;
     #[cfg(not(feature = "production"))]
     token_a_account.check_owner(authority_acc_info.key, false)?;
 
+    if amm_info.token_b_vault != *token_b_acc.key {
+      msg!(
+        "token_a_vault: {}, token_a_acc: {}",
+        amm_info.token_b_vault,
+        token_b_acc.key
+      );
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
     let token_b_account = TokenAccount::new(token_b_acc)?;
     #[cfg(feature = "production")]
     token_b_account.check_owner(authority_acc_info.key, true)?;
