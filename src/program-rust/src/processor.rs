@@ -5,6 +5,7 @@ use crate::{
     validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SerumDexMarket, SplTokenProgram,
     SplTokenSwapArgs, StableSwapArgs, TokenAccount, TokenAccountAndMint, TokenMint, UserArgs,
   },
+  constraints::OWNER_KEY,
   error::ProtocolError,
   instruction::{
     ExchangeStep, ExchangerType, Initialize, OneSolInstruction, SwapInstruction,
@@ -13,7 +14,7 @@ use crate::{
   state::{AccountFlag, AmmInfo, DexMarketInfo, OutputData},
   swappers::{serum_dex_order, spl_token_swap},
 };
-use arrayref::array_refs;
+use arrayref::{array_ref, array_refs};
 // use safe_transmute::to_bytes::transmute_one_to_bytes;
 use serum_dex::matching::Side as DexSide;
 use solana_program::{
@@ -39,14 +40,6 @@ impl Processor {
   pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
     let instruction = OneSolInstruction::unpack(input)?;
     match instruction {
-      OneSolInstruction::SwapSplTokenSwap(data) => {
-        msg!("Instruction: Swap TokenSwap");
-        Self::process_swap_spltokenswap(program_id, &data, accounts)
-      }
-      OneSolInstruction::SwapSerumDex(data) => {
-        msg!("Instruction: Swap SerumDex");
-        Self::process_swap_serumdex(program_id, &data, accounts)
-      }
       OneSolInstruction::InitializeAmmInfo(data) => {
         msg!("Instruction: Initialize AmmInfo");
         Self::process_initialize_amm_info(program_id, &data, accounts)
@@ -57,6 +50,15 @@ impl Processor {
       }
       OneSolInstruction::UpdateDexMarketOpenOrders => {
         Self::process_update_dex_mark_open_orders(program_id, accounts)
+      }
+      OneSolInstruction::SwapFees => Self::process_swap_fees(program_id, accounts),
+      OneSolInstruction::SwapSplTokenSwap(data) => {
+        msg!("Instruction: Swap TokenSwap");
+        Self::process_swap_spltokenswap(program_id, &data, accounts)
+      }
+      OneSolInstruction::SwapSerumDex(data) => {
+        msg!("Instruction: Swap SerumDex");
+        Self::process_swap_serumdex(program_id, &data, accounts)
       }
       OneSolInstruction::SwapStableSwap(data) => {
         msg!("Instruction: Swap StableSwap");
@@ -102,6 +104,13 @@ impl Processor {
       onesol_amm_info_acc.key,
       data.nonce,
     )?;
+
+    if match OWNER_KEY {
+      Some(k) => k != *owner_account_info.key,
+      None => false,
+    } {
+      return Err(ProtocolError::InvalidOwnerKey.into());
+    }
 
     let token_a = TokenAccountAndMint::new(
       TokenAccount::new(token_a_vault_info)?,
@@ -149,9 +158,9 @@ impl Processor {
     accounts: &[AccountInfo],
   ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
-    let onesol_market_acc_info = next_account_info(account_info_iter)?;
-    let authority_info = next_account_info(account_info_iter)?;
     let amm_info_acc_info = next_account_info(account_info_iter)?;
+    let authority_info = next_account_info(account_info_iter)?;
+    let onesol_market_acc_info = next_account_info(account_info_iter)?;
     let dex_market_acc_info = next_account_info(account_info_iter)?;
     let dex_open_orders_info = next_account_info(account_info_iter)?;
     let rent_acc_info = next_account_info(account_info_iter)?;
@@ -255,9 +264,9 @@ impl Processor {
     accounts: &[AccountInfo],
   ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
-    let protocol_market_info_acc = next_account_info(account_info_iter)?;
     let authority_info = next_account_info(account_info_iter)?;
     let amm_info_acc = next_account_info(account_info_iter)?;
+    let protocol_market_info_acc = next_account_info(account_info_iter)?;
     let dex_market_acc_info = next_account_info(account_info_iter)?;
     let dex_open_orders_info = next_account_info(account_info_iter)?;
     let rent_acc_info = next_account_info(account_info_iter)?;
@@ -272,7 +281,7 @@ impl Processor {
       return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
     }
     if !protocol_market_info_acc.is_writable {
-      return Err(ProtocolError::ReadableAccount.into());
+      return Err(ProtocolError::ReadonlyAccount.into());
     }
     let amm_info = AmmInfo::unpack(&amm_info_acc.data.borrow())
       .map_err(|_| ProtocolError::InvalidAmmInfoAccount)?;
@@ -335,6 +344,70 @@ impl Processor {
     obj.open_orders = *dex_open_orders_info.key;
 
     DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
+    Ok(())
+  }
+
+  /// Process swap fees instruction
+  pub fn process_swap_fees(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    if accounts.len() < 7 {
+      return Err(ProtocolError::InvalidAccountsLength.into());
+    }
+    let fixed_accounts = array_ref![accounts, 0, 7];
+    let (
+      amm_info_accounts,
+      &[ref spl_token_program_acc, ref token_a_destination, ref token_b_destination],
+    ) = array_refs![fixed_accounts, 4, 3];
+
+    let amm_info_args = AmmInfoArgs::with_parsed_args(program_id, amm_info_accounts)?;
+    let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
+
+    let owner_key = amm_info_args.amm_info.owner;
+    amm_info_args.token_a_account.check_writable()?;
+    amm_info_args.token_b_account.check_writable()?;
+
+    let token_a_dest = TokenAccount::new(token_a_destination)?;
+    token_a_dest.check_owner(&owner_key, true)?;
+    token_a_dest.check_writable()?;
+    if token_a_dest.mint()? != amm_info_args.token_a_account.mint()? {
+      msg!(
+        "token_a_dest.mint: {}, amm_info.token_a_mint: {}",
+        token_a_dest.mint()?,
+        amm_info_args.token_a_account.mint()?
+      );
+      return Err(ProtocolError::InvalidTokenAccount.into());
+    }
+
+    let token_b_dest = TokenAccount::new(token_b_destination)?;
+    token_b_dest.check_owner(&owner_key, true)?;
+    token_b_dest.check_writable()?;
+    if token_b_dest.mint()? != amm_info_args.token_b_account.mint()? {
+      msg!(
+        "token_b_dest.mint: {}, amm_info.token_b_mint: {}",
+        token_b_dest.mint()?,
+        amm_info_args.token_b_account.mint()?
+      );
+      return Err(ProtocolError::InvalidTokenAccount.into());
+    }
+
+    Self::token_transfer(
+      amm_info_args.amm_info_acc_info.key,
+      spl_token_program.inner(),
+      amm_info_args.token_a_account.inner(),
+      token_a_dest.inner(),
+      amm_info_args.authority_acc_info,
+      amm_info_args.nonce(),
+      amm_info_args.token_b_account.balance()?,
+    )?;
+    Self::token_transfer(
+      amm_info_args.amm_info_acc_info.key,
+      spl_token_program.inner(),
+      amm_info_args.token_b_account.inner(),
+      token_b_dest.inner(),
+      amm_info_args.authority_acc_info,
+      amm_info_args.nonce(),
+      amm_info_args.token_b_account.balance()?,
+    )?;
+
     Ok(())
   }
 

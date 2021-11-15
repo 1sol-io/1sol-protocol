@@ -151,8 +151,8 @@ pub enum ProtocolError {
   Unreachable,
 
   /// readable account detect
-  #[error("Readable account")]
-  ReadableAccount,
+  #[error("Readonly account")]
+  ReadonlyAccount,
 
   /// Invalid source token balance
   #[error("invalid source balance")]
@@ -193,6 +193,9 @@ pub enum ProtocolError {
 
   #[error("not rent exempt")]
   NotRentExempt,
+
+  #[error("invalid owner key")]
+  InvalidOwnerKey,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -246,7 +249,7 @@ impl PrintProgramError for ProtocolError {
       ProtocolError::InvalidAccountData => msg!("Error: InvalidAccountData"),
       ProtocolError::InvalidAccountsLength => msg!("Error: InvalidAccountsLength"),
       ProtocolError::Unreachable => msg!("Error: Unreachable"),
-      ProtocolError::ReadableAccount => msg!("Error: ReadableAccount"),
+      ProtocolError::ReadonlyAccount => msg!("Error: ReadonlyAccount"),
       ProtocolError::InvalidSourceBalance => msg!("Error: InvalidSourceBalance"),
       ProtocolError::InvalidSplTokenSwapInfoAccount => {
         msg!("Error: InvalidSplTokenSwapInfoAccount")
@@ -279,6 +282,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidDexMarketInfoAccount => {
         msg!("Error: InvalidDexMarketInfoAccount")
+      }
+      ProtocolError::InvalidOwnerKey => {
+        msg!("Error: InvalidOwnerKey")
       }
     }
   }

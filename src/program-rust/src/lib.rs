@@ -1,6 +1,7 @@
 //! OneSol - DEX Aggregator
 
 mod account_parser;
+mod constraints;
 pub mod error;
 pub mod instruction;
 pub mod processor;

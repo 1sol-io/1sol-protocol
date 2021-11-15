@@ -30,6 +30,15 @@ macro_rules! declare_validated_account_wrapper {
           pub fn pubkey(self) -> &'b Pubkey {
             self.0.key
           }
+
+          #[inline(always)]
+          #[allow(unused)]
+          pub fn check_writable(self) -> ProtocolResult<()> {
+            if self.inner().is_writable {
+              return Err(ProtocolError::ReadonlyAccount)
+            }
+            Ok(())
+          }
       }
   }
 }
@@ -120,7 +129,7 @@ declare_validated_account_wrapper!(SplTokenSwapInfo, |account: &AccountInfo| {
 
 declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
   if !account.is_writable {
-    return Err(ProtocolError::ReadableAccount);
+    return Err(ProtocolError::ReadonlyAccount);
   }
   let data = account
     .try_borrow_data()
@@ -150,7 +159,7 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
 
 declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
   if !account.is_writable {
-    return Err(ProtocolError::ReadableAccount);
+    return Err(ProtocolError::ReadonlyAccount);
   }
   let account_data = account
     .try_borrow_data()
