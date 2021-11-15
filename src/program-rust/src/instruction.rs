@@ -98,9 +98,9 @@ pub enum OneSolInstruction {
 
   /// Create Dex Market
   ///
-  /// 0. `[writable, signer]` new DexMarketInfo account to create.
+  /// 0. `[]` AmmInfo account.
   /// 1. `[]` $authority `AmmInfo's authority`
-  /// 2. `[]` AmmInfo account.
+  /// 2. `[writable, signer]` new DexMarketInfo account to create.
   /// 3. `[writable]` market account. SerumDexMarket account.
   /// 4. `[writable]` open_orders account. SerumDexOpenOrders account.
   /// 5. `[]` the rend sysvar.
@@ -109,14 +109,25 @@ pub enum OneSolInstruction {
 
   /// Update DexMarket OpenOrders
   ///
-  /// 0. `[writable]` DexMarketInfo account to update.
-  /// 1. `[]` $authority derived from `create_program_address(&[DexMarketInfo account])`
-  /// 2. `[]` AmmInfo account.
+  /// 0. `[]` AmmInfo account.
+  /// 1. `[]` $authority `AmmInfo's authority`
+  /// 2. `[writable]` DexMarketInfo account to update.
   /// 3. `[writable]` market account. SerumDexMarket account.
   /// 4. `[writable]` open_orders account. SerumDexOpenOrders account.
   /// 5. `[]` the rend sysvar.
   /// 6. `[]` SerumDex ProgramId.
   UpdateDexMarketOpenOrders,
+
+  /// Withdraw all swap fees
+  ///
+  /// 0. `[]` AmmInfo account.
+  /// 1. `[]` $authority derived from `create_program_address(&[AmmInfo account])`
+  /// 2. `[writable]` token_a_vault Account. Must be non zero, owned by $authority.
+  /// 3. `[writable]` token_b_vault Account. Must owned by $authority.
+  /// 4. '[]` Spl-Token program id
+  /// 5. `[writable]` token_a_destination token account.
+  /// 6. `[writable]` token_b_destination token account.
+  SwapFees,
 
   /// Swap the tokens in the pool.
   ///
@@ -244,6 +255,7 @@ impl OneSolInstruction {
       5 => Self::SwapTwoSteps(SwapTwoStepsInstruction::unpack(rest)?),
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
       7 => Self::UpdateDexMarketOpenOrders,
+      8 => Self::SwapFees,
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }
