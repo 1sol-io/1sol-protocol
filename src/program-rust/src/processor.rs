@@ -1,11 +1,12 @@
 //! Program state processor
 
+#[cfg(feature = "production")]
+use crate::constraints::OWNER_KEY;
 use crate::{
   account_parser::{
     validate_authority_pubkey, AmmInfoArgs, SerumDexArgs, SerumDexMarket, SplTokenProgram,
     SplTokenSwapArgs, StableSwapArgs, TokenAccount, TokenAccountAndMint, TokenMint, UserArgs,
   },
-  constraints::OWNER_KEY,
   error::ProtocolError,
   instruction::{
     ExchangeStep, ExchangerType, Initialize, OneSolInstruction, SwapInstruction,
@@ -92,7 +93,7 @@ impl Processor {
       return Err(ProtocolError::InvalidAmmInfoAccount.into());
     }
     let rent = Rent::get()?;
-    if rent.is_exempt(
+    if !rent.is_exempt(
       onesol_amm_info_acc.lamports(),
       onesol_amm_info_acc.data_len(),
     ) {
@@ -105,10 +106,8 @@ impl Processor {
       data.nonce,
     )?;
 
-    if match OWNER_KEY {
-      Some(k) => k != *owner_account_info.key,
-      None => false,
-    } {
+    #[cfg(feature = "production")]
+    if *owner_account_info.key.to_string() != OWNER_KEY.to_string() {
       return Err(ProtocolError::InvalidOwnerKey.into());
     }
 
@@ -118,11 +117,31 @@ impl Processor {
     )?;
     token_a.account.check_owner(authority_info.key, true)?;
 
+    #[cfg(feature = "production")]
+    match token_a.account.delegate()? {
+      Some(delegate) => {
+        if delegate.to_string() != OWNER_KEY.to_string() {
+          return Err(ProtocolError::InvalidTokenAccountDelegate.into())
+        }
+      },
+      None => {},
+    }
+
     let token_b = TokenAccountAndMint::new(
       TokenAccount::new(token_b_vault_info)?,
       TokenMint::new(token_b_mint_info)?,
     )?;
     token_b.account.check_owner(authority_info.key, true)?;
+
+    #[cfg(feature = "production")]
+    match token_b.account.delegate()? {
+      Some(delegate) => {
+        if delegate.to_string() != OWNER_KEY.to_string() {
+          return Err(ProtocolError::InvalidTokenAccountDelegate.into())
+        }
+      },
+      None => {},
+    }
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_info)?;
 
@@ -160,7 +179,7 @@ impl Processor {
     let account_info_iter = &mut accounts.iter();
     let amm_info_acc_info = next_account_info(account_info_iter)?;
     let authority_info = next_account_info(account_info_iter)?;
-    let onesol_market_acc_info = next_account_info(account_info_iter)?;
+    let protocol_market_acc_info = next_account_info(account_info_iter)?;
     let dex_market_acc_info = next_account_info(account_info_iter)?;
     let dex_open_orders_info = next_account_info(account_info_iter)?;
     let rent_acc_info = next_account_info(account_info_iter)?;
@@ -169,13 +188,13 @@ impl Processor {
     let dex_program_id = *dex_program_id_info.key;
 
     // check onesol_market_acc_info
-    if *onesol_market_acc_info.owner != *program_id {
+    if *protocol_market_acc_info.owner != *program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
     let rent = Rent::get()?;
     if !rent.is_exempt(
-      onesol_market_acc_info.lamports(),
-      onesol_market_acc_info.data_len(),
+      protocol_market_acc_info.lamports(),
+      protocol_market_acc_info.data_len(),
     ) {
       return Err(ProtocolError::NotRentExempt.into());
     }
@@ -201,7 +220,6 @@ impl Processor {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
     let market = SerumDexMarket::new(dex_market_acc_info)?;
-    // let market = serum_dex_order::load_market_state(dex_market_acc_info)?;
 
     let market_coin_mint = market.coin_mint()?;
     let market_pc_mint = market.pc_mint()?;
@@ -223,7 +241,7 @@ impl Processor {
       return Err(ProtocolError::InvalidRentAccount.into());
     }
 
-    let is_initialized = match DexMarketInfo::unpack(&onesol_market_acc_info.data.borrow()) {
+    let is_initialized = match DexMarketInfo::unpack(&protocol_market_acc_info.data.borrow()) {
       Ok(dex_market_info) => dex_market_info
         .flags()
         .map(|x| x.contains(AccountFlag::Initialized))
@@ -254,7 +272,7 @@ impl Processor {
       coin_mint: market_coin_mint,
       open_orders: *dex_open_orders_info.key,
     };
-    DexMarketInfo::pack(obj, &mut dex_market_acc_info.data.borrow_mut())?;
+    DexMarketInfo::pack(obj, &mut protocol_market_acc_info.data.borrow_mut())?;
     Ok(())
   }
 

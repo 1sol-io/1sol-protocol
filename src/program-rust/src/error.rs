@@ -196,6 +196,9 @@ pub enum ProtocolError {
 
   #[error("invalid owner key")]
   InvalidOwnerKey,
+
+  #[error("invalid token account delegate")]
+  InvalidTokenAccountDelegate,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -285,6 +288,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidOwnerKey => {
         msg!("Error: InvalidOwnerKey")
+      }
+      ProtocolError::InvalidTokenAccountDelegate => {
+        msg!("Error: InvalidTokenAccountDelegate")
       }
     }
   }

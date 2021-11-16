@@ -1,19 +1,14 @@
 use crate::error::ProtocolError;
-use arrayref::array_refs;
-use bytemuck::{cast_slice, from_bytes, from_bytes_mut};
-use serum_dex::{
-  instruction,
-  matching::Side,
-  state::{strip_header, MarketState, OpenOrders},
-};
+use serum_dex::{instruction, matching::Side, state::MarketState};
 use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
-  msg,
+  instruction::{AccountMeta, Instruction},
   program::{invoke, invoke_signed},
   pubkey::Pubkey,
+  sysvar::rent,
 };
-use std::{cell::RefMut, num::NonZeroU64};
+use std::num::NonZeroU64;
 
 // An exchange rate for swapping *from* one token *to* another.
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -225,54 +220,6 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     }
   }
 
-  // pub fn load_open_orders(&self) -> Result<OpenOrders, ProtocolError>{
-  //   load_open_orders(self.market.open_orders).map_err(|_| ProtocolError::InvalidOpenOrdersAccountData)
-  // }
-
-  #[allow(dead_code)]
-  pub fn cancel_order(&self, _side: Side) -> ProgramResult {
-    let open_order = load_open_orders(self.market.open_orders)?;
-
-    let slot = 0;
-    let order_id = open_order.orders[slot];
-    let slot_mask = 1u128 << slot;
-    let side = if open_order.free_slot_bits & slot_mask != 0 {
-      return Ok(());
-    } else if open_order.is_bid_bits & slot_mask != 0 {
-      Side::Bid
-    } else {
-      Side::Ask
-    };
-    msg!("cancel order: {}, side: {:?}", order_id, side);
-    let accounts = vec![
-      self.market.market.clone(),
-      self.market.bids.clone(),
-      self.market.asks.clone(),
-      self.market.open_orders.clone(),
-      self.authority.clone(),
-      self.market.event_queue.clone(),
-      self.dex_program.clone(),
-    ];
-
-    let instruction = instruction::cancel_order(
-      self.dex_program.key,
-      self.market.market.key,
-      self.market.bids.key,
-      self.market.asks.key,
-      self.market.open_orders.key,
-      self.authority.key,
-      self.market.event_queue.key,
-      side,
-      order_id,
-    )?;
-
-    match self.signers_seed {
-      Some(signers) => invoke_signed(&instruction, &accounts[..], signers),
-      None => invoke(&instruction, &accounts[..]),
-    }
-    // Ok(())
-  }
-
   pub fn settle(&self, referral: Option<AccountInfo<'info>>) -> ProgramResult {
     let mut accounts = vec![
       self.market.market.clone(),
@@ -292,6 +239,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       }
       None => None,
     };
+    accounts.push(self.dex_program.clone());
     let instruction = instruction::settle_funds(
       self.dex_program.key,
       self.market.market.key,
@@ -317,37 +265,6 @@ fn coin_lots(market: &MarketState, size: u64) -> u64 {
   size.checked_div(market.coin_lot_size).unwrap()
 }
 
-#[allow(dead_code)]
-pub const ACCOUNT_HEAD_PADDING: &[u8; 5] = b"serum";
-#[allow(dead_code)]
-pub const ACCOUNT_TAIL_PADDING: &[u8; 7] = b"padding";
-
-#[allow(dead_code)]
-pub fn load_market_state(market_acc: &AccountInfo) -> Result<MarketState, ProtocolError> {
-  let account_data = market_acc.data.borrow();
-  if account_data.len() < 12 {
-    return Err(ProtocolError::InvalidInput);
-  }
-  let (head, data, tail) = array_refs![&account_data, 5; ..; 7];
-  if head != ACCOUNT_HEAD_PADDING {
-    return Err(ProtocolError::InvalidInput);
-  }
-  if tail != ACCOUNT_TAIL_PADDING {
-    return Err(ProtocolError::InvalidInput.into());
-  }
-  let market_state: &MarketState = from_bytes(cast_slice(data));
-
-  Ok(*market_state)
-}
-
-#[allow(dead_code)]
-pub fn load_open_orders(open_orders_acc: &AccountInfo) -> Result<OpenOrders, ProtocolError> {
-  let (_, data) = strip_header::<[u8; 0], u8>(open_orders_acc, true)
-    .map_err(|_| ProtocolError::InvalidOpenOrdersAccountData)?;
-  let open_orders = RefMut::map(data, |data| from_bytes_mut(data));
-  Ok(*open_orders)
-}
-
 pub fn invoke_init_open_orders<'a>(
   amm_info_key: &Pubkey,
   program_id: &Pubkey,
@@ -361,9 +278,8 @@ pub fn invoke_init_open_orders<'a>(
   let authority_signature_seeds = [&info_bytes[..32], &[nonce]];
   let signers = &[&authority_signature_seeds[..]];
 
-  let ix =
-    instruction::init_open_orders(program_id, open_orders.key, authority.key, market.key, None)
-      .map_err(|_| ProtocolError::InitOpenOrdersInstructionError)?;
+  let ix = init_open_orders(program_id, open_orders.key, authority.key, market.key, None)
+    .map_err(|_| ProtocolError::InitOpenOrdersInstructionError)?;
   invoke_signed(
     &ix,
     &[
@@ -375,4 +291,31 @@ pub fn invoke_init_open_orders<'a>(
     signers,
   )
   .map_err(|_| ProtocolError::InvokeError)
+}
+
+pub fn init_open_orders(
+  program_id: &Pubkey,
+  open_orders: &Pubkey,
+  owner: &Pubkey,
+  market: &Pubkey,
+  market_authority: Option<&Pubkey>,
+) -> Result<Instruction, ProtocolError> {
+  let mut buf: Vec<u8> = Vec::with_capacity(5);
+  buf.insert(0, 0u8);
+  buf.extend_from_slice(&15u32.to_le_bytes());
+
+  let mut accounts: Vec<AccountMeta> = vec![
+    AccountMeta::new(*open_orders, false),
+    AccountMeta::new_readonly(*owner, true),
+    AccountMeta::new_readonly(*market, false),
+    AccountMeta::new_readonly(rent::ID, false),
+  ];
+  if let Some(market_authority) = market_authority {
+    accounts.push(AccountMeta::new_readonly(*market_authority, true));
+  }
+  Ok(Instruction {
+    program_id: *program_id,
+    data: buf,
+    accounts,
+  })
 }
