@@ -121,10 +121,10 @@ impl Processor {
     match token_a.account.delegate()? {
       Some(delegate) => {
         if delegate.to_string() != OWNER_KEY.to_string() {
-          return Err(ProtocolError::InvalidTokenAccountDelegate.into())
+          return Err(ProtocolError::InvalidTokenAccountDelegate.into());
         }
-      },
-      None => {},
+      }
+      None => {}
     }
 
     let token_b = TokenAccountAndMint::new(
@@ -137,10 +137,10 @@ impl Processor {
     match token_b.account.delegate()? {
       Some(delegate) => {
         if delegate.to_string() != OWNER_KEY.to_string() {
-          return Err(ProtocolError::InvalidTokenAccountDelegate.into())
+          return Err(ProtocolError::InvalidTokenAccountDelegate.into());
         }
-      },
-      None => {},
+      }
+      None => {}
     }
 
     let spl_token_program = SplTokenProgram::new(spl_token_program_info)?;
@@ -889,6 +889,7 @@ impl Processor {
         amount_in: data.amount_in,
         expect_amount_out: NonZeroU64::new(1).unwrap(),
         minimum_amount_out: NonZeroU64::new(1).unwrap(),
+        use_full: false,
       },
       &user_args.token_source_account,
       &step2_source_token_account,
@@ -916,6 +917,7 @@ impl Processor {
         amount_in: NonZeroU64::new(step2_amount_in).unwrap(),
         expect_amount_out: data.expect_amount_out,
         minimum_amount_out: data.minimum_amount_out,
+        use_full: false,
       },
       &step2_source_token_account,
       &step2_destination_token_account,
@@ -1043,15 +1045,21 @@ impl Processor {
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
-    let spl_token_swap_args = SplTokenSwapArgs::with_parsed_args(accounts)?;
-    let token_swap_amount_in = data.amount_in;
-    let token_swap_minimum_amount_out = data.minimum_amount_out;
     msg!(
-      "swap using token-swap, amount_in: {}, minimum_amount_out: {}, expect_amount_out: {}",
+      "swap using token-swap, amount_in: {}, minimum_amount_out: {}, expect_amount_out: {}, use_full: {}",
       data.amount_in,
       data.minimum_amount_out,
       data.expect_amount_out,
+      data.use_full,
     );
+
+    let spl_token_swap_args = SplTokenSwapArgs::with_parsed_args(accounts)?;
+    let token_swap_amount_in = Self::get_amount_in(
+      data.amount_in.get(),
+      source_token_account.balance()?,
+      data.use_full,
+    );
+    let token_swap_minimum_amount_out = data.minimum_amount_out;
 
     let source_token_mint = source_token_account.mint()?;
     let destination_token_mint = destination_token_account.mint()?;
@@ -1097,7 +1105,7 @@ impl Processor {
     swap_accounts.push(spl_token_swap_args.program.clone());
 
     let instruction_data = spl_token_swap::Swap {
-      amount_in: token_swap_amount_in.get(),
+      amount_in: token_swap_amount_in,
       minimum_amount_out: token_swap_minimum_amount_out.get(),
     };
     let instruction = spl_token_swap::spl_token_swap_instruction(
@@ -1147,6 +1155,12 @@ impl Processor {
     let source_token_mint = source_token_account.mint()?;
     let destination_token_mint = destination_token_account.mint()?;
 
+    let amount_in = Self::get_amount_in(
+      data.amount_in.get(),
+      source_token_account.balance()?,
+      data.use_full,
+    );
+
     let side = dex_args.find_side(&source_token_mint)?;
 
     let (pc_wallet_account, coin_wallet_account) = match side {
@@ -1177,8 +1191,8 @@ impl Processor {
     };
     // orderbook.cancel_order(side)?;
     match side {
-      DexSide::Bid => orderbook.buy(data.amount_in.get(), None)?,
-      DexSide::Ask => orderbook.sell(data.amount_in.get(), None)?,
+      DexSide::Bid => orderbook.buy(amount_in, None)?,
+      DexSide::Ask => orderbook.sell(amount_in, None)?,
     }
     orderbook.settle(None)?;
     Ok(())
@@ -1197,12 +1211,18 @@ impl Processor {
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
     sol_log_compute_units();
+
     let swap_args = StableSwapArgs::with_parsed_args(accounts)?;
-    let swap_amount_in = data.amount_in;
+    let amount_in = Self::get_amount_in(
+      data.amount_in.get(),
+      source_token_account.balance()?,
+      data.use_full,
+    );
     let swap_minimum_amount_out = data.minimum_amount_out;
+
     msg!(
-      "swap using token-swap, amount_in: {}, minimum_amount_out: {}, expect_amount_out: {}",
-      data.amount_in,
+      "swap using stable-swap, amount_in: {}, minimum_amount_out: {}, expect_amount_out: {}",
+      amount_in,
       data.minimum_amount_out,
       data.expect_amount_out,
     );
@@ -1248,7 +1268,7 @@ impl Processor {
       swap_destination_token_acc.inner().key,
       destination_token_account.inner().key,
       swap_args.admin_fee_acc.key,
-      swap_amount_in.get(),
+      amount_in,
       swap_minimum_amount_out.get(),
     )?;
 
@@ -1270,6 +1290,15 @@ impl Processor {
     Ok(())
   }
 
+  fn get_amount_in(amount_in: u64, source_token_balance: u64, use_full: bool) -> u64 {
+    if use_full {
+      source_token_balance
+    } else if source_token_balance < amount_in {
+      source_token_balance
+    } else {
+      amount_in
+    }
+  }
   /// check token account authority
   pub fn check_token_account_authority(
     token_account: &spl_token::state::Account,
