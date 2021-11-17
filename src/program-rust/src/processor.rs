@@ -712,14 +712,6 @@ impl Processor {
     let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
     let amm_info_args = AmmInfoArgs::with_parsed_args(program_id, amm_info_accounts)?;
 
-    msg!(
-      "source_token_account balance: {}",
-      user_args.token_source_account.balance()?,
-    );
-    if user_args.token_source_account.balance()? < data.amount_in.get() {
-      return Err(ProtocolError::InvalidSourceBalance.into());
-    }
-
     let user_source_token_mint = user_args.token_source_account.mint()?;
     let user_destination_token_mint = user_args.token_destination_account.mint()?;
 
@@ -1064,10 +1056,6 @@ impl Processor {
     let source_token_mint = source_token_account.mint()?;
     let destination_token_mint = destination_token_account.mint()?;
 
-    if source_token_account.balance()? < data.amount_in.get() {
-      return Err(ProtocolError::InvalidSourceBalance.into());
-    }
-
     let (pool_source_token_acc, pool_destination_token_acc) =
       spl_token_swap_args.find_token_pair(&source_token_mint)?;
 
@@ -1229,10 +1217,6 @@ impl Processor {
 
     let source_token_mint = source_token_account.mint()?;
     let destination_token_mint = destination_token_account.mint()?;
-
-    if source_token_account.balance()? < data.amount_in.get() {
-      return Err(ProtocolError::InvalidSourceBalance.into());
-    }
 
     let (swap_source_token_acc, swap_destination_token_acc) =
       swap_args.find_token_pair(&source_token_mint)?;
