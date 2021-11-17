@@ -470,6 +470,7 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       splTokenSwapInfo,
+      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -481,6 +482,7 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       splTokenSwapInfo: TokenSwapInfo;
+      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -498,6 +500,7 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
+        useFull,
       })
     );
   }
@@ -514,6 +517,7 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
+    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -526,6 +530,7 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
+    useFull?: boolean;
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -542,6 +547,7 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
+      BufferLayout.u8("useFull"),
     ]);
 
     let dataMap: any = {
@@ -549,6 +555,7 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
+      useFull: useFull? 1: 0,
     };
 
     const keys = [
@@ -583,6 +590,7 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       stableSwapInfo,
+      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -594,6 +602,7 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       stableSwapInfo: SaberStableSwapInfo;
+      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -611,6 +620,7 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
+        useFull
       })
     );
   }
@@ -627,6 +637,7 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
+    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -639,6 +650,7 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
+    useFull?: boolean;
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -655,6 +667,7 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
+      BufferLayout.u8("useFull"),
     ]);
 
     let dataMap: any = {
@@ -662,6 +675,7 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
+      useFull: useFull? 1: 0,
     };
 
     const keys = [
@@ -697,6 +711,7 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       dexMarketInfo,
+      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -708,6 +723,7 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       dexMarketInfo: SerumDexMarketInfo;
+      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -725,6 +741,7 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut,
         minimumAmountOut,
+        useFull
       })
     );
   }
@@ -741,6 +758,7 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
+    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -753,6 +771,7 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
+    useFull?: boolean,
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -769,6 +788,7 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
+      BufferLayout.u8("useFull"),
     ];
     // console.log("side: " + side + ", exchangeRate: " + exchangeRate);
     let dataMap: any = {
@@ -776,6 +796,7 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
+      useFull: useFull? 1: 0,
     };
 
     const keys = [

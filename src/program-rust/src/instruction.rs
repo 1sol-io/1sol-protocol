@@ -78,6 +78,8 @@ pub struct SwapInstruction {
   pub expect_amount_out: NonZeroU64,
   /// Minimum amount of DESTINATION token to output, prevents excessive slippage
   pub minimum_amount_out: NonZeroU64,
+  /// use full amount of source account
+  pub use_full: bool,
 }
 
 // Instructions supported by the 1sol protocol program
@@ -272,7 +274,7 @@ impl Initialize {
 }
 
 impl SwapInstruction {
-  const DATA_LEN: usize = 24;
+  const DATA_LEN: usize = 25;
 
   // size = 1 or 3
   // flag[0/1], [account_size], [amount_in], [minium_amount_out]
@@ -281,8 +283,8 @@ impl SwapInstruction {
       return Err(ProtocolError::InvalidInput.into());
     }
     let arr_data = array_ref![input, 0, SwapInstruction::DATA_LEN];
-    let (&amount_in_arr, &expect_amount_out_arr, &minimum_amount_out_arr) =
-      array_refs![arr_data, 8, 8, 8];
+    let (&amount_in_arr, &expect_amount_out_arr, &minimum_amount_out_arr, &[use_full]) =
+      array_refs![arr_data, 8, 8, 8, 1];
     let amount_in =
       NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(ProtocolError::InvalidInput)?;
     let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
@@ -296,6 +298,7 @@ impl SwapInstruction {
       amount_in,
       expect_amount_out,
       minimum_amount_out,
+      use_full: use_full == 1,
     })
   }
 }
@@ -352,14 +355,34 @@ mod tests {
     let amount_in = 120000u64;
     let minimum_amount_out = 1080222u64;
     let expect_amount_out = 1090000u64;
+    let use_full = 1u8;
     let mut buf = Vec::with_capacity(SwapInstruction::DATA_LEN);
     buf.extend_from_slice(&amount_in.to_le_bytes());
     buf.extend_from_slice(&expect_amount_out.to_le_bytes());
     buf.extend_from_slice(&minimum_amount_out.to_le_bytes());
+    buf.push(use_full);
+    // buf.insert(, element)
 
     let i = SwapInstruction::unpack(&buf[..]).unwrap();
     assert_eq!(i.amount_in.get(), amount_in);
     assert_eq!(i.expect_amount_out.get(), expect_amount_out);
     assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
+    assert_eq!(i.use_full, true);
+
+    let amount_in = 120000u64;
+    let minimum_amount_out = 1080222u64;
+    let expect_amount_out = 1090000u64;
+    let use_full = 0u8;
+    let mut buf = Vec::with_capacity(SwapInstruction::DATA_LEN);
+    buf.extend_from_slice(&amount_in.to_le_bytes());
+    buf.extend_from_slice(&expect_amount_out.to_le_bytes());
+    buf.extend_from_slice(&minimum_amount_out.to_le_bytes());
+    buf.push(use_full);
+
+    let i = SwapInstruction::unpack(&buf[..]).unwrap();
+    assert_eq!(i.amount_in.get(), amount_in);
+    assert_eq!(i.expect_amount_out.get(), expect_amount_out);
+    assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
+    assert_eq!(i.use_full, false);
   }
 }
