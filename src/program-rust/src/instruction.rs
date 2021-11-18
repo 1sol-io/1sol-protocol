@@ -14,6 +14,8 @@ pub enum ExchangerType {
   SerumDex,
   /// Saber StableSwap
   StableSwap,
+  /// Raydium swap
+  RaydiumSwap,
 }
 
 impl ExchangerType {
@@ -22,7 +24,17 @@ impl ExchangerType {
       0 => Some(ExchangerType::SplTokenSwap),
       1 => Some(ExchangerType::SerumDex),
       2 => Some(ExchangerType::StableSwap),
+      3 => Some(ExchangerType::RaydiumSwap),
       _ => None,
+    }
+  }
+
+  pub fn min_accounts(&self) -> usize {
+    match self {
+      ExchangerType::SplTokenSwap => 15,
+      ExchangerType::StableSwap => 15,
+      ExchangerType::SerumDex => 19,
+      ExchangerType::RaydiumSwap => 23,
     }
   }
 }
@@ -197,6 +209,34 @@ pub enum OneSolInstruction {
   ///     14. `[]` StableSwap program id.
   SwapStableSwap(SwapInstruction),
 
+  /// Swap tokens through Raydium-Swap
+  ///
+  ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///     3. '[]` Token program id.
+  ///     4. `[writable]` OneSolProtocol AmmInfo.
+  ///     5. `[]` OneSolProtocol AmmInfo authority.
+  ///     6. `[writable]` OneSolProtocol AmmInfo token a account.
+  ///     7. `[writable]` OneSolProtocol AmmInfo token b account.
+  ///
+  ///     8. `[writable]` raydium amm account.
+  ///     9. `[]` raydium $authority.
+  ///     10. `[writable]` raydium open_orders account.
+  ///     11. `[writable]` raydium target_orders account.
+  ///     12. `[writable]` raydium pool_token_coin account.
+  ///     13. `[writable]` raydium pool_token_pc account.
+  ///     14. `[]` serum-dex program id.
+  ///     15. `[writable]` raydium serum_market account.
+  ///     16. `[writable]` raydium bids account.
+  ///     17. `[writable]` raydium asks account.
+  ///     18. `[writable]` raydium event_q account.
+  ///     19. `[writable]` raydium coin_vault account.
+  ///     20. `[writable]` raydium pc_vault account.
+  ///     21. `[]` raydium vault_signer account.
+  ///     22. `[]` raydium program id.
+  SwapRaydiumSwap(SwapInstruction),
+
   /// Swap Two Steps
   ///   Define:
   ///     TokenSwap Accounts
@@ -258,6 +298,7 @@ impl OneSolInstruction {
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
       7 => Self::UpdateDexMarketOpenOrders,
       8 => Self::SwapFees,
+      9 => Self::SwapRaydiumSwap(SwapInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }

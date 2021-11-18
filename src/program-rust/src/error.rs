@@ -199,6 +199,12 @@ pub enum ProtocolError {
 
   #[error("invalid token account delegate")]
   InvalidTokenAccountDelegate,
+
+  #[error("invalid raydium amm-info account")]
+  InvalidRaydiumAmmInfoAccount,
+
+  #[error("invalid serum-dex program id")]
+  InvalidSerumDexProgramId,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -291,6 +297,12 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidTokenAccountDelegate => {
         msg!("Error: InvalidTokenAccountDelegate")
+      }
+      ProtocolError::InvalidRaydiumAmmInfoAccount => {
+        msg!("Error: InvalidRaydiumAmmInfoAccount")
+      }
+      ProtocolError::InvalidSerumDexProgramId => {
+        msg!("Error: InvalidSerumDexProgramId")
       }
     }
   }
