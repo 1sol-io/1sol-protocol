@@ -28,15 +28,6 @@ impl ExchangerType {
       _ => None,
     }
   }
-
-  pub fn min_accounts(&self) -> usize {
-    match self {
-      ExchangerType::SplTokenSwap => 15,
-      ExchangerType::StableSwap => 15,
-      ExchangerType::SerumDex => 19,
-      ExchangerType::RaydiumSwap => 23,
-    }
-  }
 }
 
 #[derive(Clone, Debug, PartialEq, Copy)]
@@ -66,6 +57,17 @@ pub struct Initialize {
   pub nonce: u8,
 }
 
+/// Swap instruction data
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwapInstruction {
+  /// amount of tokens to swap
+  pub amount_in: NonZeroU64,
+  /// expect amount of tokens to swap
+  pub expect_amount_out: NonZeroU64,
+  /// Minimum amount of DESTINATION token to output, prevents excessive slippage
+  pub minimum_amount_out: NonZeroU64,
+}
+
 /// Swap from multiple exchanger
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub struct SwapTwoStepsInstruction {
@@ -79,19 +81,6 @@ pub struct SwapTwoStepsInstruction {
   pub step1: ExchangeStep,
   /// Step1
   pub step2: ExchangeStep,
-}
-
-/// Swap instruction data
-#[derive(Clone, Debug, PartialEq)]
-pub struct SwapInstruction {
-  /// amount of tokens to swap
-  pub amount_in: NonZeroU64,
-  /// expect amount of tokens to swap
-  pub expect_amount_out: NonZeroU64,
-  /// Minimum amount of DESTINATION token to output, prevents excessive slippage
-  pub minimum_amount_out: NonZeroU64,
-  /// use full amount of source account
-  pub use_full: bool,
 }
 
 // Instructions supported by the 1sol protocol program
@@ -148,93 +137,86 @@ pub enum OneSolInstruction {
   ///   user accounts
   ///   0. `[writable]` User token SOURCE Account, (coin_wallet)
   ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
-  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
-  ///   spl token program
+  ///   2. `[-signer]` User token SOURCE account OWNER (or Authority) account.
   ///   3. '[]` Token program id
-  ///   amm_info accounts
   ///   4. `[writable]` OneSolProtocol AmmInfo
   ///   5. `[]` OneSolProtocol AmmInfo authority
-  ///   6. `[writable]` OneSolProtocol AmmInfo token a account
-  ///   7. `[writable]` OneSolProtocol AmmInfo token b account
-  ///   token_swap accounts
-  ///   8. `[]` TokenSwap swap_info account
-  ///   9. `[]` TokenSwap swap_info authority
-  ///   10. `[writable]` TokenSwap token_A Account.
-  ///   11. `[writable]` TokenSwap token_B Account.
-  ///   12. `[writable]` TokenSwap Pool token mint, to generate trading fees
-  ///   13. `[writable]` TokenSwap Fee account, to receive trading fees
-  ///   14. '[]` Token-Swap program id
-  ///   15. `[optional, writable]` Host fee account to receive additional trading fees
+  ///   6. `[writable]` OneSolProtocol AmmInfo token account
+  ///   7. `[]` TokenSwap swap_info account
+  ///   8. `[]` TokenSwap swap_info authority
+  ///   9. `[writable]` TokenSwap token_A Account.
+  ///   10. `[writable]` TokenSwap token_B Account.
+  ///   11. `[writable]` TokenSwap Pool token mint, to generate trading fees
+  ///   12. `[writable]` TokenSwap Fee account, to receive trading fees
+  ///   13. '[]` Token-Swap program id
+  ///   14. `[optional, writable]` Host fee account to receive additional trading fees
   SwapSplTokenSwap(SwapInstruction),
 
   /// Swap the tokens in the serum dex market.
   ///
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet)
   ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
-  ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///     2. `[-signer]` User token SOURCE account OWNER (or Authority) account.
   ///     3. '[]` Token program id
   ///     4. `[writable]` OneSolProtocol AmmInfo
   ///     5. `[]` OneSolProtocol AmmInfo authority
-  ///     6. `[writable]` OneSolProtocol AmmInfo token a account
-  ///     7. `[writable]` OneSolProtocol AmmInfo token b account
-  ///     8. `[writable]`  serum-dex market
-  ///     9. `[writable]`  serum-dex request_queue
-  ///     10. `[writable]`  serum-dex event_queue
-  ///     11. `[writable]`  serum-dex market_bids
-  ///     12. `[writable]`  serum-dex market_asks
-  ///     13. `[writable]`  serum-dex coin_vault
-  ///     14. `[writable]`  serum-dex pc_vault
-  ///     15. `[]`  serum-dex vault_signer for settleFunds
-  ///     16. `[writable]`  serum-dex open_orders
-  ///     17. `[]`  serum-dex rent_sysvar
-  ///     18. `[]`  serum-dex serum_dex_program_id
+  ///     6. `[writable]` OneSolProtocol AmmInfo token account
+  ///     7. `[writable]`  serum-dex market
+  ///     8. `[writable]`  serum-dex request_queue
+  ///     9. `[writable]`  serum-dex event_queue
+  ///     10. `[writable]`  serum-dex market_bids
+  ///     11. `[writable]`  serum-dex market_asks
+  ///     12. `[writable]`  serum-dex coin_vault
+  ///     13. `[writable]`  serum-dex pc_vault
+  ///     14. `[]`  serum-dex vault_signer for settleFunds
+  ///     15. `[writable]`  serum-dex open_orders
+  ///     16. `[]`  serum-dex rent_sysvar
+  ///     17. `[]`  serum-dex serum_dex_program_id
   SwapSerumDex(SwapInstruction),
 
   /// Swap tokens through Saber StableSwap
   ///
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
   ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
-  ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///     2. `[-signer]` User token SOURCE account OWNER (or Authority) account.
   ///     3. '[]` Token program id.
   ///     4. `[writable]` OneSolProtocol AmmInfo.
   ///     5. `[]` OneSolProtocol AmmInfo authority.
-  ///     6. `[writable]` OneSolProtocol AmmInfo token a account.
-  ///     7. `[writable]` OneSolProtocol AmmInfo token b account.
-  ///     8. `[]` StableSwap info.
-  ///     9. `[]` StableSwap authority.
-  ///     10. `[writable]` StableSwap token a account.
-  ///     11. `[writable]` StableSwap token b account.
-  ///     12. `[writable]` StableSwap admin fee account. Must have same mint as User DESTINATION token account.
-  ///     13. `[]` StableSwap clock id.
-  ///     14. `[]` StableSwap program id.
+  ///     6. `[writable]` OneSolProtocol AmmInfo token account.
+  ///     7. `[]` StableSwap info.
+  ///     8. `[]` StableSwap authority.
+  ///     9. `[writable]` StableSwap token a account.
+  ///     10. `[writable]` StableSwap token b account.
+  ///     11. `[writable]` StableSwap admin fee account. Must have same mint as User DESTINATION token account.
+  ///     12. `[]` StableSwap clock id.
+  ///     13. `[]` StableSwap program id.
   SwapStableSwap(SwapInstruction),
 
   /// Swap tokens through Raydium-Swap
   ///
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
   ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
-  ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///     2. `[-signer]` User token SOURCE account OWNER (or Authority) account.
   ///     3. '[]` Token program id.
   ///     4. `[writable]` OneSolProtocol AmmInfo.
   ///     5. `[]` OneSolProtocol AmmInfo authority.
-  ///     6. `[writable]` OneSolProtocol AmmInfo token a account.
-  ///     7. `[writable]` OneSolProtocol AmmInfo token b account.
+  ///     6. `[writable]` OneSolProtocol AmmInfo token account.
   ///
-  ///     8. `[writable]` raydium amm account.
-  ///     9. `[]` raydium $authority.
-  ///     10. `[writable]` raydium open_orders account.
-  ///     11. `[writable]` raydium target_orders account.
-  ///     12. `[writable]` raydium pool_token_coin account.
-  ///     13. `[writable]` raydium pool_token_pc account.
-  ///     14. `[]` serum-dex program id.
-  ///     15. `[writable]` raydium serum_market account.
-  ///     16. `[writable]` raydium bids account.
-  ///     17. `[writable]` raydium asks account.
-  ///     18. `[writable]` raydium event_q account.
-  ///     19. `[writable]` raydium coin_vault account.
-  ///     20. `[writable]` raydium pc_vault account.
-  ///     21. `[]` raydium vault_signer account.
-  ///     22. `[]` raydium program id.
+  ///     7. `[writable]` raydium amm account.
+  ///     8. `[]` raydium $authority.
+  ///     9. `[writable]` raydium open_orders account.
+  ///     10. `[writable]` raydium target_orders account.
+  ///     11. `[writable]` raydium pool_token_coin account.
+  ///     12. `[writable]` raydium pool_token_pc account.
+  ///     13. `[]` serum-dex program id.
+  ///     14. `[writable]` raydium serum_market account.
+  ///     15. `[writable]` raydium bids account.
+  ///     16. `[writable]` raydium asks account.
+  ///     17. `[writable]` raydium event_q account.
+  ///     18. `[writable]` raydium coin_vault account.
+  ///     19. `[writable]` raydium pc_vault account.
+  ///     20. `[]` raydium vault_signer account.
+  ///     21. `[]` raydium program id.
   SwapRaydiumSwap(SwapInstruction),
 
   /// Swap Two Steps
@@ -315,7 +297,7 @@ impl Initialize {
 }
 
 impl SwapInstruction {
-  const DATA_LEN: usize = 25;
+  const DATA_LEN: usize = 24;
 
   // size = 1 or 3
   // flag[0/1], [account_size], [amount_in], [minium_amount_out]
@@ -324,8 +306,8 @@ impl SwapInstruction {
       return Err(ProtocolError::InvalidInput.into());
     }
     let arr_data = array_ref![input, 0, SwapInstruction::DATA_LEN];
-    let (&amount_in_arr, &expect_amount_out_arr, &minimum_amount_out_arr, &[use_full]) =
-      array_refs![arr_data, 8, 8, 8, 1];
+    let (&amount_in_arr, &expect_amount_out_arr, &minimum_amount_out_arr) =
+      array_refs![arr_data, 8, 8, 8];
     let amount_in =
       NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(ProtocolError::InvalidInput)?;
     let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
@@ -339,7 +321,6 @@ impl SwapInstruction {
       amount_in,
       expect_amount_out,
       minimum_amount_out,
-      use_full: use_full == 1,
     })
   }
 }
@@ -396,34 +377,15 @@ mod tests {
     let amount_in = 120000u64;
     let minimum_amount_out = 1080222u64;
     let expect_amount_out = 1090000u64;
-    let use_full = 1u8;
     let mut buf = Vec::with_capacity(SwapInstruction::DATA_LEN);
     buf.extend_from_slice(&amount_in.to_le_bytes());
     buf.extend_from_slice(&expect_amount_out.to_le_bytes());
     buf.extend_from_slice(&minimum_amount_out.to_le_bytes());
-    buf.push(use_full);
     // buf.insert(, element)
 
     let i = SwapInstruction::unpack(&buf[..]).unwrap();
     assert_eq!(i.amount_in.get(), amount_in);
     assert_eq!(i.expect_amount_out.get(), expect_amount_out);
     assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
-    assert_eq!(i.use_full, true);
-
-    let amount_in = 120000u64;
-    let minimum_amount_out = 1080222u64;
-    let expect_amount_out = 1090000u64;
-    let use_full = 0u8;
-    let mut buf = Vec::with_capacity(SwapInstruction::DATA_LEN);
-    buf.extend_from_slice(&amount_in.to_le_bytes());
-    buf.extend_from_slice(&expect_amount_out.to_le_bytes());
-    buf.extend_from_slice(&minimum_amount_out.to_le_bytes());
-    buf.push(use_full);
-
-    let i = SwapInstruction::unpack(&buf[..]).unwrap();
-    assert_eq!(i.amount_in.get(), amount_in);
-    assert_eq!(i.expect_amount_out.get(), expect_amount_out);
-    assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
-    assert_eq!(i.use_full, false);
   }
 }
