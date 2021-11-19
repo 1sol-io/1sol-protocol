@@ -11,11 +11,9 @@ import {
 } from "@solana/web3.js";
 import {
   SYSVAR_RENT_PUBKEY,
-  Keypair,
   Signer,
   AccountMeta,
   PublicKey,
-  SystemProgram,
   Transaction,
   TransactionInstruction,
   sendAndConfirmTransaction,
@@ -414,7 +412,7 @@ export class AmmInfo {
   constructor(
     public pubkey: PublicKey,
     public programId: PublicKey,
-    protected authority: PublicKey,
+    public authority: PublicKey,
     private decoded: any
   ) {
     this.pubkey = pubkey;
@@ -439,13 +437,21 @@ export class AmmInfo {
     return new PublicKey(this.decoded.tokenMintB);
   }
 
-  public toKeys() {
-    return [
+  public toKeys(destinationMint: PublicKey) {
+    const keys = [
       { pubkey: this.pubkey, isSigner: false, isWritable: true },
       { pubkey: this.authority, isSigner: false, isWritable: false },
-      { pubkey: this.tokenAccountA(), isSigner: false, isWritable: true },
-      { pubkey: this.tokenAccountB(), isSigner: false, isWritable: true },
     ];
+    if (destinationMint.equals(this.tokenMintA())) {
+      keys.push(
+        { pubkey: this.tokenAccountA(), isSigner: false, isWritable: true },
+      );
+    } else {
+      keys.push(
+        { pubkey: this.tokenAccountB(), isSigner: false, isWritable: true },
+      );
+    }
+    return keys
   }
 
   public static async from({
@@ -586,7 +592,6 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       splTokenSwapInfo,
-      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -598,7 +603,6 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       splTokenSwapInfo: TokenSwapInfo;
-      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -616,7 +620,6 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
-        useFull,
       })
     );
   }
@@ -633,7 +636,6 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
-    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -646,7 +648,6 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
-    useFull?: boolean;
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -663,7 +664,6 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
-      BufferLayout.u8("useFull"),
     ]);
 
     let dataMap: any = {
@@ -671,16 +671,20 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
-      useFull: useFull ? 1 : 0,
     };
 
     const keys = [
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
-      { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
-    keys.push(...ammInfo.toKeys());
+
+    if (transferAuthority.equals(ammInfo.authority)) {
+      keys.push({ pubkey: transferAuthority, isSigner: false, isWritable: false });
+    } else {
+      keys.push({ pubkey: transferAuthority, isSigner: true, isWritable: false });
+    }
+    keys.push({ pubkey: tokenProgramId, isSigner: false, isWritable: false });
+    keys.push(...ammInfo.toKeys(destinationMint));
     const swapKeys = splTokenSwapInfo.toKeys();
     keys.push(...swapKeys);
 
@@ -706,7 +710,6 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       stableSwapInfo,
-      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -718,7 +721,6 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       stableSwapInfo: SaberStableSwapInfo;
-      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -736,7 +738,6 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
-        useFull
       })
     );
   }
@@ -753,7 +754,6 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
-    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -766,7 +766,6 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
-    useFull?: boolean;
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -783,7 +782,6 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
-      BufferLayout.u8("useFull"),
     ]);
 
     let dataMap: any = {
@@ -791,16 +789,20 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
-      useFull: useFull ? 1 : 0,
     };
 
     const keys = [
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
-      { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
-    keys.push(...ammInfo.toKeys());
+
+    if (transferAuthority.equals(ammInfo.authority)) {
+      keys.push({ pubkey: transferAuthority, isSigner: false, isWritable: false });
+    } else {
+      keys.push({ pubkey: transferAuthority, isSigner: true, isWritable: false });
+    }
+    keys.push({ pubkey: tokenProgramId, isSigner: false, isWritable: false });
+    keys.push(...ammInfo.toKeys(destinationMint));
     const swapKeys = stableSwapInfo.toKeys(sourceMint);
     keys.push(...swapKeys);
 
@@ -826,7 +828,6 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       raydiumInfo,
-      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -838,7 +839,6 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       raydiumInfo: RaydiumAmmInfo;
-      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -856,7 +856,6 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
-        useFull
       })
     );
   }
@@ -873,7 +872,6 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
-    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -886,7 +884,6 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
-    useFull?: boolean;
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -903,7 +900,6 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
-      BufferLayout.u8("useFull"),
     ]);
 
     let dataMap: any = {
@@ -911,16 +907,20 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
-      useFull: useFull ? 1 : 0,
     };
 
     const keys = [
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
-      { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
-    keys.push(...ammInfo.toKeys());
+
+    if (transferAuthority.equals(ammInfo.authority)) {
+      keys.push({ pubkey: transferAuthority, isSigner: false, isWritable: false });
+    } else {
+      keys.push({ pubkey: transferAuthority, isSigner: true, isWritable: false });
+    }
+    keys.push({ pubkey: tokenProgramId, isSigner: false, isWritable: false });
+    keys.push(...ammInfo.toKeys(destinationMint));
     const swapKeys = raydiumInfo.toKeys();
     keys.push(...swapKeys);
 
@@ -946,7 +946,6 @@ export class OneSolProtocol {
       expectAmountOut,
       minimumAmountOut,
       dexMarketInfo,
-      useFull = false,
     }: {
       fromTokenAccountKey: PublicKey;
       toTokenAccountKey: PublicKey;
@@ -958,7 +957,6 @@ export class OneSolProtocol {
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       dexMarketInfo: SerumDexMarketInfo;
-      useFull?: boolean;
     },
     instructions: Array<TransactionInstruction>,
     signers: Array<Signer>
@@ -976,7 +974,6 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut,
         minimumAmountOut,
-        useFull
       })
     );
   }
@@ -993,7 +990,6 @@ export class OneSolProtocol {
     amountIn,
     expectAmountOut,
     minimumAmountOut,
-    useFull = false,
   }: {
     ammInfo: AmmInfo;
     sourceTokenKey: PublicKey;
@@ -1006,7 +1002,6 @@ export class OneSolProtocol {
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
     minimumAmountOut: Numberu64;
-    useFull?: boolean,
   }): Promise<TransactionInstruction> {
     if (
       !(
@@ -1023,7 +1018,6 @@ export class OneSolProtocol {
       uint64("amountIn"),
       uint64("expectAmountOut"),
       uint64("minimumAmountOut"),
-      BufferLayout.u8("useFull"),
     ];
     // console.log("side: " + side + ", exchangeRate: " + exchangeRate);
     let dataMap: any = {
@@ -1031,16 +1025,20 @@ export class OneSolProtocol {
       amountIn: amountIn.toBuffer(),
       expectAmountOut: expectAmountOut.toBuffer(),
       minimumAmountOut: minimumAmountOut.toBuffer(),
-      useFull: useFull ? 1 : 0,
     };
 
     const keys = [
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
-      { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
-    keys.push(...ammInfo.toKeys());
+
+    if (transferAuthority.equals(ammInfo.authority)) {
+      keys.push({ pubkey: transferAuthority, isSigner: false, isWritable: false });
+    } else {
+      keys.push({ pubkey: transferAuthority, isSigner: true, isWritable: false });
+    }
+    keys.push({ pubkey: tokenProgramId, isSigner: false, isWritable: false });
+    keys.push(...ammInfo.toKeys(destinationMintKey));
     const swapKeys = dexMarketInfo.toKeys();
     keys.push(...swapKeys);
 
@@ -1078,11 +1076,11 @@ export class OneSolProtocol {
       minimumAmountOut: Numberu64;
       step1: {
         ammInfo: AmmInfo;
-        stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
+        stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo | RaydiumAmmInfo;
       };
       step2: {
         ammInfo: AmmInfo;
-        stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
+        stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo | RaydiumAmmInfo;
       };
     },
     instructions: Array<TransactionInstruction>,
@@ -1128,11 +1126,11 @@ export class OneSolProtocol {
     tokenProgramId: PublicKey;
     step1: {
       ammInfo: AmmInfo;
-      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
+      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo | RaydiumAmmInfo;
     };
     step2: {
       ammInfo: AmmInfo;
-      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo;
+      stepInfo: TokenSwapInfo | SerumDexMarketInfo | SaberStableSwapInfo | RaydiumAmmInfo;
     };
     amountIn: Numberu64;
     expectAmountOut: Numberu64;
@@ -1180,7 +1178,12 @@ export class OneSolProtocol {
 
     [step1, step2].forEach(({ ammInfo, stepInfo }, i) => {
       if (i !== 0) {
-        keys.push(...ammInfo.toKeys());
+        keys.push(...[
+          { pubkey: ammInfo.pubkey, isSigner: false, isWritable: true },
+          { pubkey: ammInfo.authority, isSigner: false, isWritable: false },
+          { pubkey: ammInfo.tokenAccountA(), isSigner: false, isWritable: true },
+          { pubkey: ammInfo.tokenAccountB(), isSigner: false, isWritable: true },
+        ]);
       }
       let stepSourceMint;
       if (i === 0) {
@@ -1206,6 +1209,11 @@ export class OneSolProtocol {
         const swapKeys = stepInfo.toKeys(stepSourceMint);
         keys.push(...swapKeys);
         dataMap[`step${i + 1}ExchangerType`] = 2;
+        dataMap[`step${i + 1}AccountsCount`] = swapKeys.length;
+      } else if (stepInfo instanceof RaydiumAmmInfo) {
+        const swapKeys = stepInfo.toKeys();
+        keys.push(...swapKeys);
+        dataMap[`step${i + 1}ExchangerType`] = 3;
         dataMap[`step${i + 1}AccountsCount`] = swapKeys.length;
       }
     });

@@ -7,6 +7,10 @@ use arrayref::{array_ref, array_refs};
 use serum_dex::{matching::Side as DexSide, state::AccountFlag as SerumAccountFlag};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
 
+pub trait ArgsSize {
+  const ARGS_SIZE: usize;
+}
+
 macro_rules! declare_validated_account_wrapper {
   ($WrapperT:ident, $validate:expr $(, $a:ident : $t:ty)*) => {
       #[derive(Copy, Clone)]
@@ -352,7 +356,7 @@ impl<'a, 'b: 'a> SplTokenSwapInfo<'a, 'b> {}
 pub struct UserArgs<'a, 'b: 'a> {
   pub token_source_account: TokenAccount<'a, 'b>,
   pub token_destination_account: TokenAccount<'a, 'b>,
-  pub source_account_owner: SignerAccount<'a, 'b>,
+  pub source_account_owner: &'a AccountInfo<'b>,
 }
 
 impl<'a, 'b: 'a> UserArgs<'a, 'b> {
@@ -370,8 +374,9 @@ impl<'a, 'b: 'a> UserArgs<'a, 'b> {
 
     let token_source_account = TokenAccount::new(token_source_acc_info)?;
     let token_destination_account = TokenAccount::new(token_destination_acc_info)?;
-    let source_account_owner = SignerAccount::new(source_account_owner)?;
-    token_source_account.check_owner(source_account_owner.inner().key, false)?;
+    // let source_account_owner = SignerAccount::new(source_account_owner)?;
+    token_source_account.check_owner(source_account_owner.key, false)?;
+
     if token_source_account.mint() == token_destination_account.mint() {
       return Err(ProtocolError::InvalidTokenAccount);
     }
@@ -388,8 +393,10 @@ pub struct AmmInfoArgs<'a, 'b: 'a> {
   pub amm_info: AmmInfo,
   pub amm_info_acc_info: &'a AccountInfo<'b>,
   pub authority_acc_info: &'a AccountInfo<'b>,
-  pub token_a_account: TokenAccount<'a, 'b>,
-  pub token_b_account: TokenAccount<'a, 'b>,
+  pub token_account: TokenAccount<'a, 'b>,
+  pub program_id: &'a Pubkey,
+  // pub token_a_account: TokenAccount<'a, 'b>,
+  // pub token_b_account: TokenAccount<'a, 'b>,
 }
 
 impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
@@ -397,16 +404,12 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProtocolResult<Self> {
-    const MIN_ACCOUNTS: usize = 4;
-    if !(accounts.len() == MIN_ACCOUNTS) {
+    const MIN_ACCOUNTS: usize = 3;
+    if accounts.len() < MIN_ACCOUNTS {
       return Err(ProtocolError::InvalidAccountsLength);
     }
-    let &[
-      ref amm_info_acc,
-      ref authority_acc_info,
-      ref token_a_acc,
-      ref token_b_acc,
-    ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
+    let &[ref amm_info_acc, ref authority_acc_info, ref token_account]: &'a [AccountInfo<'b>;
+          MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
 
     if *amm_info_acc.owner != *program_id {
       return Err(ProtocolError::InvalidOwner);
@@ -415,7 +418,6 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
       msg!("[ERROR] amm_info account it not writable");
       return Err(ProtocolError::InvalidAmmInfoAccount);
     }
-    // Pubkey::create_program_address(seeds, program_id)
     let data = amm_info_acc
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
@@ -428,58 +430,20 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
       amm_info.nonce,
     )?;
 
-    if amm_info.token_a_vault != *token_a_acc.key {
-      msg!(
-        "token_a_vault: {}, token_a_acc: {}",
-        amm_info.token_a_vault,
-        token_a_acc.key
-      );
-      return Err(ProtocolError::InvalidTokenAccount);
-    }
-    let token_a_account = TokenAccount::new(token_a_acc)?;
-    #[cfg(feature = "production")]
-    token_a_account.check_owner(authority_acc_info.key, true)?;
-    #[cfg(not(feature = "production"))]
-    token_a_account.check_owner(authority_acc_info.key, false)?;
+    let token_account = TokenAccount::new(token_account)?;
+    // token_account.check_owner(authority_acc_info.key, false)?;
 
-    if amm_info.token_b_vault != *token_b_acc.key {
-      msg!(
-        "token_a_vault: {}, token_a_acc: {}",
-        amm_info.token_b_vault,
-        token_b_acc.key
-      );
-      return Err(ProtocolError::InvalidTokenAccount);
-    }
-    let token_b_account = TokenAccount::new(token_b_acc)?;
-    #[cfg(feature = "production")]
-    token_b_account.check_owner(authority_acc_info.key, true)?;
-    #[cfg(not(feature = "production"))]
-    token_b_account.check_owner(authority_acc_info.key, false)?;
     Ok(AmmInfoArgs {
       amm_info,
       amm_info_acc_info: amm_info_acc,
       authority_acc_info,
-      token_a_account,
-      token_b_account,
+      token_account,
+      program_id,
     })
   }
 
   pub fn nonce(&self) -> u8 {
     self.amm_info.nonce
-  }
-
-  /// find token_pair of amm_info by user's token pair
-  ///   0 source_token_account
-  ///   1 destination_token_account
-  pub fn find_token_pair(
-    &self,
-    source_token_account_mint: &Pubkey,
-  ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
-    if *source_token_account_mint == self.token_a_account.mint()? {
-      Ok((&self.token_a_account, &self.token_b_account))
-    } else {
-      Ok((&self.token_b_account, &self.token_a_account))
-    }
   }
 
   pub fn record(
@@ -534,6 +498,151 @@ impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
     AmmInfo::pack(amm_info, &mut self.amm_info_acc_info.data.borrow_mut())
       .map_err(|_| ProtocolError::PackDataFailed)
   }
+}
+
+pub struct FullAmmInfoArgs<'a, 'b: 'a> {
+  pub amm_info: AmmInfo,
+  pub amm_info_acc_info: &'a AccountInfo<'b>,
+  pub authority_acc_info: &'a AccountInfo<'b>,
+  pub token_a_account: TokenAccount<'a, 'b>,
+  pub token_b_account: TokenAccount<'a, 'b>,
+}
+
+impl<'a, 'b: 'a> FullAmmInfoArgs<'a, 'b> {
+  pub fn with_parsed_args(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProtocolResult<Self> {
+    const MIN_ACCOUNTS: usize = 4;
+    if accounts.len() < MIN_ACCOUNTS {
+      return Err(ProtocolError::InvalidAccountsLength);
+    }
+    let &[
+      ref amm_info_acc,
+      ref authority_acc_info,
+      ref token_a_acc,
+      ref token_b_acc,
+    ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
+
+    if *amm_info_acc.owner != *program_id {
+      return Err(ProtocolError::InvalidOwner);
+    }
+    if !amm_info_acc.is_writable {
+      msg!("[ERROR] amm_info account it not writable");
+      return Err(ProtocolError::InvalidAmmInfoAccount);
+    }
+    // Pubkey::create_program_address(seeds, program_id)
+    let data = amm_info_acc
+      .try_borrow_data()
+      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    let amm_info = AmmInfo::unpack(&data).map_err(|_| ProtocolError::InvalidAccountData)?;
+
+    validate_authority_pubkey(
+      authority_acc_info.key,
+      program_id,
+      amm_info_acc.key,
+      amm_info.nonce,
+    )?;
+
+    if amm_info.token_a_vault != *token_a_acc.key {
+      msg!(
+        "token_a_vault: {}, token_a_acc: {}",
+        amm_info.token_a_vault,
+        token_a_acc.key
+      );
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
+    let token_a_account = TokenAccount::new(token_a_acc)?;
+
+    if amm_info.token_b_vault != *token_b_acc.key {
+      msg!(
+        "token_a_vault: {}, token_a_acc: {}",
+        amm_info.token_b_vault,
+        token_b_acc.key
+      );
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
+    let token_b_account = TokenAccount::new(token_b_acc)?;
+
+    Ok(Self {
+      amm_info,
+      amm_info_acc_info: amm_info_acc,
+      authority_acc_info,
+      token_a_account,
+      token_b_account,
+    })
+  }
+
+  pub fn nonce(&self) -> u8 {
+    self.amm_info.nonce
+  }
+
+  pub fn record(
+    &self,
+    source_token_account_mint: &Pubkey,
+    destination_token_account_mint: &Pubkey,
+    amount_in: u64,
+    amount_out: u64,
+    fee: u64,
+  ) -> ProtocolResult<()> {
+    let mut amm_info = self.amm_info;
+
+    if *source_token_account_mint == amm_info.token_a_mint
+      && *destination_token_account_mint == amm_info.token_b_mint
+    {
+      amm_info
+        .output_data
+        .token_a_in_amount
+        .checked_add(amount_in as u128)
+        .map(|x| amm_info.output_data.token_a_in_amount = x);
+      amm_info
+        .output_data
+        .token_b_out_amount
+        .checked_add(amount_out as u128)
+        .map(|x| amm_info.output_data.token_b_out_amount = x);
+      amm_info
+        .output_data
+        .token_a2b_fee
+        .checked_add(fee)
+        .map(|x| amm_info.output_data.token_a2b_fee = x);
+    } else if *source_token_account_mint == amm_info.token_b_mint
+      && *destination_token_account_mint == amm_info.token_a_mint
+    {
+      amm_info
+        .output_data
+        .token_b_in_amount
+        .checked_add(amount_in as u128)
+        .map(|x| amm_info.output_data.token_b_in_amount = x);
+      amm_info
+        .output_data
+        .token_a_out_amount
+        .checked_add(amount_out as u128)
+        .map(|x| amm_info.output_data.token_a_out_amount = x);
+      amm_info
+        .output_data
+        .token_b2a_fee
+        .checked_add(fee)
+        .map(|x| amm_info.output_data.token_b2a_fee = x);
+    } else {
+      return Ok(());
+    }
+    AmmInfo::pack(amm_info, &mut self.amm_info_acc_info.data.borrow_mut())
+      .map_err(|_| ProtocolError::PackDataFailed)
+  }
+
+  // /// find token_pair of amm_info by user's token pair
+  // ///   0 source_token_account
+  // ///   1 destination_token_account
+  // pub fn find_token_pair(
+  //   &self,
+  //   source_token_account_mint: &Pubkey,
+  // ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
+  //   if *source_token_account_mint == self.token_a_account.mint()? {
+  //     Ok((&self.token_a_account, &self.token_b_account))
+  //   } else {
+  //     Ok((&self.token_b_account, &self.token_a_account))
+  //   }
+  // }
 }
 
 #[derive(Copy, Clone)]

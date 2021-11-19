@@ -4,7 +4,7 @@ use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
   instruction::{AccountMeta, Instruction},
-  program::{invoke, invoke_signed},
+  program::invoke_signed,
   pubkey::Pubkey,
   sysvar::rent,
 };
@@ -214,10 +214,12 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     )
     .map_err(|_| ProtocolError::InvalidDelegate)?;
 
-    match self.signers_seed {
-      Some(signers) => invoke_signed(&instruction, &accounts[..], signers),
-      None => invoke(&instruction, &accounts[..]),
-    }
+    invoke_signed(
+      &instruction,
+      &accounts[..],
+      self.signers_seed.ok_or(ProtocolError::InvalidAuthority)?,
+    )?;
+    Ok(())
   }
 
   pub fn settle(&self, referral: Option<AccountInfo<'info>>) -> ProgramResult {
@@ -253,10 +255,12 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       referral_key,
       self.market.vault_signer.key,
     )?;
-    match self.signers_seed {
-      Some(signers) => invoke_signed(&instruction, &accounts[..], signers),
-      None => invoke(&instruction, &accounts[..]),
-    }
+    invoke_signed(
+      &instruction,
+      &accounts[..],
+      self.signers_seed.ok_or(ProtocolError::InvalidAuthority)?,
+    )?;
+    Ok(())
   }
 }
 
