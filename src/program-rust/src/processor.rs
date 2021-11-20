@@ -69,7 +69,7 @@ impl Processor {
         Self::process_initialize_swap_info(program_id, accounts)
       }
       OneSolInstruction::SetupSwapInfo => {
-        msg!("Instruction: InitializeSwapInfo");
+        msg!("Instruction: SetupSwapInfo");
         Self::process_setup_swap_info(program_id, accounts)
       }
       OneSolInstruction::SwapSplTokenSwapIn(data) => {
@@ -271,10 +271,11 @@ impl Processor {
     if !user_account.is_signer {
       return Err(ProtocolError::InvalidSignerAccount.into());
     }
-    let mut swap_info = SwapInfo::unpack(*swap_info_account.try_borrow_data()?)?;
+    let mut swap_info = SwapInfo::unpack_unchecked(*swap_info_account.try_borrow_data()?)?;
     if swap_info.is_initialized() {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
+    swap_info.is_initialized = 1;
     swap_info.owner = *user_account.key;
     swap_info.status = 1;
     swap_info.token_latest_amount = 0;
@@ -494,7 +495,7 @@ impl Processor {
       ExchangerType::SplTokenSwap => Self::process_step_tokenswap(
         program_id,
         data.amount_in.get(),
-        u64::MAX,
+        u64::MIN + 1,
         &user_args.token_source_account,
         &user_args.token_destination_account,
         user_args.source_account_owner,
@@ -504,7 +505,7 @@ impl Processor {
       ExchangerType::StableSwap => Self::process_step_stableswap(
         program_id,
         data.amount_in.get(),
-        u64::MAX,
+        u64::MIN + 1,
         &user_args.token_source_account,
         &user_args.token_destination_account,
         user_args.source_account_owner,
@@ -514,7 +515,7 @@ impl Processor {
       ExchangerType::RaydiumSwap => Self::process_step_raydium(
         program_id,
         data.amount_in.get(),
-        u64::MAX,
+        u64::MIN + 1,
         &user_args.token_source_account,
         &user_args.token_destination_account,
         user_args.source_account_owner,
@@ -524,7 +525,7 @@ impl Processor {
       ExchangerType::SerumDex => Self::process_step_serumdex(
         program_id,
         data.amount_in.get(),
-        u64::MAX,
+        u64::MIN + 1,
         &user_args.token_source_account,
         &user_args.token_destination_account,
         user_args.source_account_owner,

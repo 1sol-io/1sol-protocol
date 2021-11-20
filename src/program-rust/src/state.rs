@@ -113,7 +113,7 @@ impl IsInitialized for SwapInfo {
 }
 
 impl Pack for SwapInfo {
-  const LEN: usize = 94;
+  const LEN: usize = 78;
 
   fn pack_into_slice(&self, dst: &mut [u8]) {
     let output = array_mut_ref![dst, 0, 78];
