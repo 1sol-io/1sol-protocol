@@ -484,7 +484,7 @@ export class OneSolProtocol {
       owner: PublicKey;
       instructions: Array<TransactionInstruction>,
       signers: Array<Signer>,
-    }) {
+    }): Promise<PublicKey> {
 
     const swapInfoAccount = Keypair.generate();
 
@@ -509,6 +509,7 @@ export class OneSolProtocol {
       data,
     }));
     signers.push(swapInfoAccount);
+    return swapInfoAccount.publicKey;
   }
 
   async setupSwapInfo(
