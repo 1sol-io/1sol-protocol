@@ -447,7 +447,7 @@ export class OneSolProtocol {
     wallet,
   }: {
     wallet: PublicKey,
-  }): Promise<SwapInfo|null> {
+  }): Promise<SwapInfo | null> {
     const [accountItem] = await this.connection.getProgramAccounts(this.programId, {
       filters: [
         {
@@ -479,14 +479,37 @@ export class OneSolProtocol {
     }
   }
 
-  async createSwapInfo(
-    { instructions, signers, owner }: {
-      owner: PublicKey;
-      instructions: Array<TransactionInstruction>,
-      signers: Array<Signer>,
-    }): Promise<PublicKey> {
-
+  async createSwapInfo({
+    instructions, signers, owner
+  }: {
+    owner: PublicKey;
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>,
+  }) {
     const swapInfoAccount = Keypair.generate();
+    const lamports = await this.connection.getMinimumBalanceForRentExemption(SwapInfoLayout.span);
+    instructions.push(await SystemProgram.createAccount({
+      fromPubkey: owner,
+      newAccountPubkey: swapInfoAccount.publicKey,
+      lamports: lamports,
+      space: SwapInfoLayout.span,
+      programId: this.programId,
+    }));
+    signers.push(swapInfoAccount);
+    instructions.push(await OneSolProtocol.makeSwapInfoInstruction({
+      swapInfo: swapInfoAccount.publicKey,
+      owner,
+      programId: this.programId,
+    }));
+    return swapInfoAccount.publicKey;
+  }
+
+  static async makeSwapInfoInstruction(
+    { swapInfo, programId, owner }: {
+      owner: PublicKey;
+      swapInfo: PublicKey,
+      programId: PublicKey,
+    }): Promise<TransactionInstruction> {
 
     const dataLayout = BufferLayout.struct([
       BufferLayout.u8("instruction"),
@@ -498,18 +521,16 @@ export class OneSolProtocol {
     dataLayout.encode(dataMap, data);
 
     const keys = [
-      { pubkey: swapInfoAccount.publicKey, isSigner: true, isWritable: true },
+      { pubkey: swapInfo, isSigner: true, isWritable: true },
       { pubkey: owner, isSigner: true, isWritable: false },
     ];
 
 
-    instructions.push(new TransactionInstruction({
+    return new TransactionInstruction({
       keys,
-      programId: this.programId,
+      programId: programId,
       data,
-    }));
-    signers.push(swapInfoAccount);
-    return swapInfoAccount.publicKey;
+    });
   }
 
   async setupSwapInfo(
