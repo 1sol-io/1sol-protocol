@@ -762,7 +762,6 @@ export class OneSolProtocol {
       userTransferAuthority: PublicKey;
       feeTokenAccount: PublicKey;
       swapInfo: PublicKey,
-      amountIn: Numberu64;
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       splTokenSwapInfo: TokenSwapInfo;
@@ -1069,7 +1068,6 @@ export class OneSolProtocol {
       userTransferAuthority: PublicKey;
       feeTokenAccount: PublicKey;
       swapInfo: PublicKey;
-      amountIn: Numberu64;
       expectAmountOut: Numberu64;
       minimumAmountOut: Numberu64;
       stableSwapInfo: SaberStableSwapInfo;
