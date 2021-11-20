@@ -487,12 +487,21 @@ export class OneSolProtocol {
     }) {
 
     const swapInfoAccount = Keypair.generate();
+
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+    ]);
+    const dataMap: any = {
+      instruction: 10, // Swap instruction
+    };
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(dataLayout, data);
+
     const keys = [
       { pubkey: swapInfoAccount.publicKey, isSigner: true, isWritable: true },
       { pubkey: owner, isSigner: true, isWritable: false },
     ];
 
-    const data = Buffer.alloc(0);
 
     instructions.push(new TransactionInstruction({
       keys,
@@ -500,6 +509,34 @@ export class OneSolProtocol {
       data,
     }));
     signers.push(swapInfoAccount);
+  }
+
+  async setupSwapInfo(
+    { swapInfo, tokenAccount, instructions, signers }: {
+      swapInfo: PublicKey,
+      tokenAccount: PublicKey,
+      instructions: Array<TransactionInstruction>,
+      signers: Array<Signer>,
+    }
+  ) {
+    const keys = [
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
+      { pubkey: tokenAccount, isSigner: false, isWritable: true },
+    ];
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+    ]);
+    const dataMap: any = {
+      instruction: 11,
+    };
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(dataLayout, data);
+
+    instructions.push(new TransactionInstruction({
+      keys,
+      programId: this.programId,
+      data,
+    }));
   }
 
   async createSwapByTokenSwapInstruction(
@@ -1892,8 +1929,6 @@ export async function loadSaberStableSwap(
     adminFeeAccountB
   );
 }
-
-
 
 export async function loadRaydiumAmmInfo(
   {
