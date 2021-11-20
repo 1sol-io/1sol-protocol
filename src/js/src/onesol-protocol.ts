@@ -965,7 +965,6 @@ export class OneSolProtocol {
       toMintKey,
       userTransferAuthority,
       swapInfo,
-      feeTokenAccount,
       amountIn,
       stableSwapInfo,
     }: {
@@ -974,7 +973,6 @@ export class OneSolProtocol {
       fromMintKey: PublicKey;
       toMintKey: PublicKey;
       userTransferAuthority: PublicKey;
-      feeTokenAccount: PublicKey;
       swapInfo: PublicKey;
       amountIn: Numberu64;
       stableSwapInfo: SaberStableSwapInfo;
@@ -990,7 +988,6 @@ export class OneSolProtocol {
         destinationMint: toMintKey,
         transferAuthority: userTransferAuthority,
         tokenProgramId: this.tokenProgramId,
-        feeTokenAccount: feeTokenAccount,
         swapInfo: swapInfo,
         stableSwapInfo: stableSwapInfo,
         amountIn: amountIn,
@@ -1006,7 +1003,6 @@ export class OneSolProtocol {
     destinationMint,
     transferAuthority,
     tokenProgramId,
-    feeTokenAccount,
     swapInfo,
     stableSwapInfo,
     amountIn,
@@ -1018,7 +1014,6 @@ export class OneSolProtocol {
     destinationMint: PublicKey;
     transferAuthority: PublicKey;
     tokenProgramId: PublicKey;
-    feeTokenAccount: PublicKey;
     swapInfo: PublicKey;
     stableSwapInfo: SaberStableSwapInfo;
     amountIn: Numberu64;
@@ -1040,7 +1035,6 @@ export class OneSolProtocol {
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
       { pubkey: swapInfo, isSigner: false, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
-      { pubkey: feeTokenAccount, isSigner: false, isWritable: true }
     ];
     const swapKeys = stableSwapInfo.toKeys(sourceMint);
     keys.push(...swapKeys);
@@ -1276,7 +1270,6 @@ export class OneSolProtocol {
       toMintKey,
       userTransferAuthority,
       swapInfo,
-      feeTokenAccount,
       amountIn,
       raydiumInfo,
     }: {
@@ -1286,7 +1279,6 @@ export class OneSolProtocol {
       toMintKey: PublicKey;
       userTransferAuthority: PublicKey;
       swapInfo: PublicKey;
-      feeTokenAccount: PublicKey;
       amountIn: Numberu64;
       raydiumInfo: RaydiumAmmInfo;
     },
@@ -1302,7 +1294,6 @@ export class OneSolProtocol {
         transferAuthority: userTransferAuthority,
         tokenProgramId: this.tokenProgramId,
         swapInfo: swapInfo,
-        feeTokenAccount: feeTokenAccount,
         raydiumInfo: raydiumInfo,
         amountIn: amountIn,
         programId: this.programId,
@@ -1318,7 +1309,6 @@ export class OneSolProtocol {
     transferAuthority,
     swapInfo,
     tokenProgramId,
-    feeTokenAccount,
     raydiumInfo,
     amountIn,
     programId = ONESOL_PROTOCOL_PROGRAM_ID,
@@ -1329,7 +1319,6 @@ export class OneSolProtocol {
     destinationMint: PublicKey;
     transferAuthority: PublicKey;
     tokenProgramId: PublicKey;
-    feeTokenAccount: PublicKey;
     swapInfo: PublicKey;
     raydiumInfo: RaydiumAmmInfo;
     amountIn: Numberu64;
@@ -1351,7 +1340,6 @@ export class OneSolProtocol {
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
       { pubkey: swapInfo, isSigner: true, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
-      { pubkey: feeTokenAccount, isSigner: false, isWritable: true }
     ];
     const swapKeys = raydiumInfo.toKeys();
     keys.push(...swapKeys);
@@ -1587,7 +1575,6 @@ export class OneSolProtocol {
       fromMintKey,
       toMintKey,
       userTransferAuthority,
-      feeTokenAccount,
       swapInfo,
       amountIn,
       dexMarketInfo,
@@ -1598,7 +1585,6 @@ export class OneSolProtocol {
       toMintKey: PublicKey;
       swapInfo: PublicKey,
       userTransferAuthority: PublicKey;
-      feeTokenAccount: PublicKey,
       amountIn: Numberu64;
       dexMarketInfo: SerumDexMarketInfo;
     },
@@ -1613,7 +1599,6 @@ export class OneSolProtocol {
         destinationMintKey: toMintKey,
         transferAuthority: userTransferAuthority,
         swapInfo: swapInfo,
-        feeTokenAccount: feeTokenAccount,
         tokenProgramId: this.tokenProgramId,
         dexMarketInfo,
         amountIn: amountIn,
@@ -1627,7 +1612,6 @@ export class OneSolProtocol {
     sourceMintKey,
     destinationTokenKey,
     destinationMintKey,
-    feeTokenAccount,
     swapInfo,
     transferAuthority,
     tokenProgramId,
@@ -1639,7 +1623,6 @@ export class OneSolProtocol {
     sourceMintKey: PublicKey;
     destinationTokenKey: PublicKey;
     destinationMintKey: PublicKey;
-    feeTokenAccount: PublicKey;
     swapInfo: PublicKey;
     transferAuthority: PublicKey;
     tokenProgramId: PublicKey;
@@ -1663,7 +1646,6 @@ export class OneSolProtocol {
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
       { pubkey: swapInfo, isSigner: true, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
-      { pubkey: feeTokenAccount, isSigner: false, isWritable: true }
     ];
     const swapKeys = dexMarketInfo.toKeys();
     keys.push(...swapKeys);
