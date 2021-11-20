@@ -6,6 +6,7 @@ import * as BufferLayout from "buffer-layout";
 import {
   AccountInfo,
   Connection,
+  Keypair,
   SystemInstruction,
   SystemProgram,
   SYSVAR_CLOCK_PUBKEY,
@@ -122,6 +123,15 @@ export const DexMarketInfoLayout = BufferLayout.struct([
   publicKeyLayout("dexProgramId"),
 ]);
 
+export const SwapInfoLayout = BufferLayout.struct([
+  BufferLayout.u8("isInitialized"),
+  BufferLayout.u8("status"),
+  uint64("tokenLatestAmount"),
+  publicKeyLayout("owner"),
+  BufferLayout.u32("tokenAccountOption"),
+  publicKeyLayout("tokenAccount")
+]);
+
 export const RaydiumLiquidityStateLayout = BufferLayout.struct([
   uint64("status"),
   uint64("nonce"),
@@ -176,6 +186,16 @@ export const RaydiumLiquidityStateLayout = BufferLayout.struct([
   publicKeyLayout("owner"),
   publicKeyLayout("pnlOwner"),
 ]);
+
+export interface SwapInfo {
+  pubkey: PublicKey;
+  programId: PublicKey;
+  isInitialized: number;
+  status: number;
+  tokenLatestAmount: Numberu64;
+  owner: PublicKey;
+  tokenAccount: PublicKey | null;
+}
 
 export class TokenSwapInfo {
   constructor(
@@ -421,6 +441,65 @@ export class OneSolProtocol {
     programId?: PublicKey;
   }): Promise<OneSolProtocol> {
     return new OneSolProtocol(connection, programId, TOKEN_PROGRAM_ID, wallet);
+  }
+
+  async findSwapInfo({
+    wallet,
+  }: {
+    wallet: PublicKey,
+  }): Promise<SwapInfo> {
+    const [accountItem] = await this.connection.getProgramAccounts(this.programId, {
+      filters: [
+        {
+          dataSize: SwapInfoLayout.span,
+        },
+        {
+          memcmp: {
+            offset: SwapInfoLayout.offsetOf('owner'),
+            bytes: wallet.toBase58(),
+          },
+        },
+      ],
+    });
+
+    if (!accountItem) {
+      throw new Error('Swap info not found');
+    }
+    const { pubkey, account } = accountItem;
+    const decoded = SwapInfoLayout.decode(account.data);
+    const tokenAccount = decoded.tokenAccountOption === 0 ? null : new PublicKey(decoded.tokenAccount);
+    return {
+      pubkey,
+      programId: account.owner,
+      isInitialized: decoded.isInitialized,
+      status: decoded.status,
+      tokenLatestAmount: decoded.tokenLatestAmount,
+      owner: new PublicKey(decoded.owner),
+      tokenAccount,
+    }
+  }
+
+  async createSwapInfo(
+    { instructions, signers, owner }: {
+      owner: PublicKey;
+      instructions: Array<TransactionInstruction>,
+      signers: Array<Signer>,
+    }) {
+
+    const swapInfoAccount = Keypair.generate();
+    const keys = [
+      { pubkey: swapInfoAccount.publicKey, isSigner: true, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+    ];
+
+    const data = Buffer.alloc(0);
+
+    instructions.push(new TransactionInstruction({
+      keys,
+      programId: this.programId,
+      data,
+    }));
+    signers.push(swapInfoAccount);
   }
 
   async createSwapByTokenSwapInstruction(
@@ -1664,7 +1743,7 @@ export class OneSolProtocol {
       data,
     });
   }
- 
+
 }
 
 export function realSendAndConfirmTransaction(
