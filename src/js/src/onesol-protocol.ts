@@ -495,7 +495,7 @@ export class OneSolProtocol {
       instruction: 10, // Swap instruction
     };
     const data = Buffer.alloc(dataLayout.span);
-    dataLayout.encode(dataLayout, data);
+    dataLayout.encode(dataMap, data);
 
     const keys = [
       { pubkey: swapInfoAccount.publicKey, isSigner: true, isWritable: true },
@@ -530,7 +530,7 @@ export class OneSolProtocol {
       instruction: 11,
     };
     const data = Buffer.alloc(dataLayout.span);
-    dataLayout.encode(dataLayout, data);
+    dataLayout.encode(dataMap, data);
 
     instructions.push(new TransactionInstruction({
       keys,
@@ -579,6 +579,7 @@ export class OneSolProtocol {
         amountIn: amountIn,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
+        programId: this.programId,
       })
     );
   }
@@ -680,6 +681,7 @@ export class OneSolProtocol {
         tokenProgramId: this.tokenProgramId,
         splTokenSwapInfo: splTokenSwapInfo,
         amountIn: amountIn,
+        programId: this.programId,
       })
     );
   }
@@ -780,6 +782,7 @@ export class OneSolProtocol {
         splTokenSwapInfo: splTokenSwapInfo,
         expectAmountOut: expectAmountOut,
         minimumAmountOut: minimumAmountOut,
+        programId: this.programId,
       })
     );
   }
