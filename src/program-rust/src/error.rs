@@ -205,6 +205,9 @@ pub enum ProtocolError {
 
   #[error("invalid serum-dex program id")]
   InvalidSerumDexProgramId,
+
+  #[error("invalid fee token account")]
+  InvalidFeeTokenAccount,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -303,6 +306,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidSerumDexProgramId => {
         msg!("Error: InvalidSerumDexProgramId")
+      }
+      ProtocolError::InvalidFeeTokenAccount => {
+        msg!("Error: InvalidFeeTokenAccount")
       }
     }
   }

@@ -78,7 +78,7 @@ pub struct OrderbookClient<'a, 'info: 'a> {
   pub dex_program: &'a AccountInfo<'info>,
   pub token_program: &'a AccountInfo<'info>,
   pub rent: &'a AccountInfo<'info>,
-  pub signers_seed: Option<&'a [&'a [&'a [u8]]]>,
+  pub signers_seed: &'a [&'a [&'a [u8]]],
 }
 
 impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
@@ -217,7 +217,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     invoke_signed(
       &instruction,
       &accounts[..],
-      self.signers_seed.ok_or(ProtocolError::InvalidAuthority)?,
+      self.signers_seed,
     )?;
     Ok(())
   }
@@ -258,7 +258,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     invoke_signed(
       &instruction,
       &accounts[..],
-      self.signers_seed.ok_or(ProtocolError::InvalidAuthority)?,
+      self.signers_seed,
     )?;
     Ok(())
   }
@@ -270,7 +270,7 @@ fn coin_lots(market: &MarketState, size: u64) -> u64 {
 }
 
 pub fn invoke_init_open_orders<'a>(
-  amm_info_key: &Pubkey,
+  base_seed: &[u8],
   program_id: &Pubkey,
   open_orders: &AccountInfo<'a>,
   authority: &AccountInfo<'a>,
@@ -278,8 +278,7 @@ pub fn invoke_init_open_orders<'a>(
   rent: &AccountInfo<'a>,
   nonce: u8,
 ) -> Result<(), ProtocolError> {
-  let info_bytes = amm_info_key.to_bytes();
-  let authority_signature_seeds = [&info_bytes[..32], &[nonce]];
+  let authority_signature_seeds = [base_seed, &[nonce]];
   let signers = &[&authority_signature_seeds[..]];
 
   let ix = init_open_orders(program_id, open_orders.key, authority.key, market.key, None)

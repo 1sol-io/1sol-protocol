@@ -1,8 +1,4 @@
-use crate::{
-  check_unreachable,
-  error::{ProtocolError, ProtocolResult},
-  state::AmmInfo,
-};
+use crate::{check_unreachable, error::{ProtocolError, ProtocolResult}, state::{DexMarketInfo, SwapInfo}};
 use arrayref::{array_ref, array_refs};
 use serum_dex::{matching::Side as DexSide, state::AccountFlag as SerumAccountFlag};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
@@ -206,10 +202,10 @@ fn unpack_coption_key(src: &[u8; 36]) -> ProtocolResult<Option<Pubkey>> {
 pub fn validate_authority_pubkey(
   authority: &Pubkey,
   program_id: &Pubkey,
-  info: &Pubkey,
+  base_key: &[u8],
   nonce: u8,
 ) -> Result<(), ProtocolError> {
-  let key = Pubkey::create_program_address(&[&info.to_bytes()[..32], &[nonce]], program_id)
+  let key = Pubkey::create_program_address(&[base_key, &[nonce]], program_id)
     .map_err(|_| ProtocolError::InvalidProgramAddress)?;
   if key != *authority {
     return Err(ProtocolError::InvalidAuthority);
@@ -389,260 +385,26 @@ impl<'a, 'b: 'a> UserArgs<'a, 'b> {
   }
 }
 
-pub struct AmmInfoArgs<'a, 'b: 'a> {
-  pub amm_info: AmmInfo,
-  pub amm_info_acc_info: &'a AccountInfo<'b>,
-  pub authority_acc_info: &'a AccountInfo<'b>,
-  pub token_account: TokenAccount<'a, 'b>,
-  pub program_id: &'a Pubkey,
-  // pub token_a_account: TokenAccount<'a, 'b>,
-  // pub token_b_account: TokenAccount<'a, 'b>,
+pub struct SwapInfoArgs<'a, 'b: 'a> {
+  pub swap_info: SwapInfo,
+  pub swap_info_acc: &'a AccountInfo<'b>,
 }
 
-impl<'a, 'b: 'a> AmmInfoArgs<'a, 'b> {
+impl<'a, 'b: 'a> SwapInfoArgs<'a, 'b> {
   pub fn with_parsed_args(
+    account: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'b>],
   ) -> ProtocolResult<Self> {
-    const MIN_ACCOUNTS: usize = 3;
-    if accounts.len() < MIN_ACCOUNTS {
-      return Err(ProtocolError::InvalidAccountsLength);
-    }
-    let &[ref amm_info_acc, ref authority_acc_info, ref token_account]: &'a [AccountInfo<'b>;
-          MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
-
-    if *amm_info_acc.owner != *program_id {
+    if *account.owner != *program_id {
       return Err(ProtocolError::InvalidOwner);
     }
-    if !amm_info_acc.is_writable {
-      msg!("[ERROR] amm_info account it not writable");
-      return Err(ProtocolError::InvalidAmmInfoAccount);
-    }
-    let data = amm_info_acc
-      .try_borrow_data()
-      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-    let amm_info = AmmInfo::unpack(&data).map_err(|_| ProtocolError::InvalidAccountData)?;
-
-    validate_authority_pubkey(
-      authority_acc_info.key,
-      program_id,
-      amm_info_acc.key,
-      amm_info.nonce,
-    )?;
-
-    let token_account = TokenAccount::new(token_account)?;
-    // token_account.check_owner(authority_acc_info.key, false)?;
-
-    Ok(AmmInfoArgs {
-      amm_info,
-      amm_info_acc_info: amm_info_acc,
-      authority_acc_info,
-      token_account,
-      program_id,
-    })
-  }
-
-  pub fn nonce(&self) -> u8 {
-    self.amm_info.nonce
-  }
-
-  pub fn record(
-    &self,
-    source_token_account_mint: &Pubkey,
-    destination_token_account_mint: &Pubkey,
-    amount_in: u64,
-    amount_out: u64,
-    fee: u64,
-  ) -> ProtocolResult<()> {
-    let mut amm_info = self.amm_info;
-
-    if *source_token_account_mint == amm_info.token_a_mint
-      && *destination_token_account_mint == amm_info.token_b_mint
-    {
-      amm_info
-        .output_data
-        .token_a_in_amount
-        .checked_add(amount_in as u128)
-        .map(|x| amm_info.output_data.token_a_in_amount = x);
-      amm_info
-        .output_data
-        .token_b_out_amount
-        .checked_add(amount_out as u128)
-        .map(|x| amm_info.output_data.token_b_out_amount = x);
-      amm_info
-        .output_data
-        .token_a2b_fee
-        .checked_add(fee)
-        .map(|x| amm_info.output_data.token_a2b_fee = x);
-    } else if *source_token_account_mint == amm_info.token_b_mint
-      && *destination_token_account_mint == amm_info.token_a_mint
-    {
-      amm_info
-        .output_data
-        .token_b_in_amount
-        .checked_add(amount_in as u128)
-        .map(|x| amm_info.output_data.token_b_in_amount = x);
-      amm_info
-        .output_data
-        .token_a_out_amount
-        .checked_add(amount_out as u128)
-        .map(|x| amm_info.output_data.token_a_out_amount = x);
-      amm_info
-        .output_data
-        .token_b2a_fee
-        .checked_add(fee)
-        .map(|x| amm_info.output_data.token_b2a_fee = x);
-    } else {
-      return Ok(());
-    }
-    AmmInfo::pack(amm_info, &mut self.amm_info_acc_info.data.borrow_mut())
-      .map_err(|_| ProtocolError::PackDataFailed)
-  }
-}
-
-pub struct FullAmmInfoArgs<'a, 'b: 'a> {
-  pub amm_info: AmmInfo,
-  pub amm_info_acc_info: &'a AccountInfo<'b>,
-  pub authority_acc_info: &'a AccountInfo<'b>,
-  pub token_a_account: TokenAccount<'a, 'b>,
-  pub token_b_account: TokenAccount<'a, 'b>,
-}
-
-impl<'a, 'b: 'a> FullAmmInfoArgs<'a, 'b> {
-  pub fn with_parsed_args(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'b>],
-  ) -> ProtocolResult<Self> {
-    const MIN_ACCOUNTS: usize = 4;
-    if accounts.len() < MIN_ACCOUNTS {
-      return Err(ProtocolError::InvalidAccountsLength);
-    }
-    let &[
-      ref amm_info_acc,
-      ref authority_acc_info,
-      ref token_a_acc,
-      ref token_b_acc,
-    ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
-
-    if *amm_info_acc.owner != *program_id {
-      return Err(ProtocolError::InvalidOwner);
-    }
-    if !amm_info_acc.is_writable {
-      msg!("[ERROR] amm_info account it not writable");
-      return Err(ProtocolError::InvalidAmmInfoAccount);
-    }
-    // Pubkey::create_program_address(seeds, program_id)
-    let data = amm_info_acc
-      .try_borrow_data()
-      .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-    let amm_info = AmmInfo::unpack(&data).map_err(|_| ProtocolError::InvalidAccountData)?;
-
-    validate_authority_pubkey(
-      authority_acc_info.key,
-      program_id,
-      amm_info_acc.key,
-      amm_info.nonce,
-    )?;
-
-    if amm_info.token_a_vault != *token_a_acc.key {
-      msg!(
-        "token_a_vault: {}, token_a_acc: {}",
-        amm_info.token_a_vault,
-        token_a_acc.key
-      );
-      return Err(ProtocolError::InvalidTokenAccount);
-    }
-    let token_a_account = TokenAccount::new(token_a_acc)?;
-
-    if amm_info.token_b_vault != *token_b_acc.key {
-      msg!(
-        "token_a_vault: {}, token_a_acc: {}",
-        amm_info.token_b_vault,
-        token_b_acc.key
-      );
-      return Err(ProtocolError::InvalidTokenAccount);
-    }
-    let token_b_account = TokenAccount::new(token_b_acc)?;
-
+    let swap_info =
+      SwapInfo::unpack(&account.data.borrow()).map_err(|_| ProtocolError::InvalidAccountData)?;
     Ok(Self {
-      amm_info,
-      amm_info_acc_info: amm_info_acc,
-      authority_acc_info,
-      token_a_account,
-      token_b_account,
+      swap_info,
+      swap_info_acc: account,
     })
   }
-
-  pub fn nonce(&self) -> u8 {
-    self.amm_info.nonce
-  }
-
-  pub fn record(
-    &self,
-    source_token_account_mint: &Pubkey,
-    destination_token_account_mint: &Pubkey,
-    amount_in: u64,
-    amount_out: u64,
-    fee: u64,
-  ) -> ProtocolResult<()> {
-    let mut amm_info = self.amm_info;
-
-    if *source_token_account_mint == amm_info.token_a_mint
-      && *destination_token_account_mint == amm_info.token_b_mint
-    {
-      amm_info
-        .output_data
-        .token_a_in_amount
-        .checked_add(amount_in as u128)
-        .map(|x| amm_info.output_data.token_a_in_amount = x);
-      amm_info
-        .output_data
-        .token_b_out_amount
-        .checked_add(amount_out as u128)
-        .map(|x| amm_info.output_data.token_b_out_amount = x);
-      amm_info
-        .output_data
-        .token_a2b_fee
-        .checked_add(fee)
-        .map(|x| amm_info.output_data.token_a2b_fee = x);
-    } else if *source_token_account_mint == amm_info.token_b_mint
-      && *destination_token_account_mint == amm_info.token_a_mint
-    {
-      amm_info
-        .output_data
-        .token_b_in_amount
-        .checked_add(amount_in as u128)
-        .map(|x| amm_info.output_data.token_b_in_amount = x);
-      amm_info
-        .output_data
-        .token_a_out_amount
-        .checked_add(amount_out as u128)
-        .map(|x| amm_info.output_data.token_a_out_amount = x);
-      amm_info
-        .output_data
-        .token_b2a_fee
-        .checked_add(fee)
-        .map(|x| amm_info.output_data.token_b2a_fee = x);
-    } else {
-      return Ok(());
-    }
-    AmmInfo::pack(amm_info, &mut self.amm_info_acc_info.data.borrow_mut())
-      .map_err(|_| ProtocolError::PackDataFailed)
-  }
-
-  // /// find token_pair of amm_info by user's token pair
-  // ///   0 source_token_account
-  // ///   1 destination_token_account
-  // pub fn find_token_pair(
-  //   &self,
-  //   source_token_account_mint: &Pubkey,
-  // ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
-  //   if *source_token_account_mint == self.token_a_account.mint()? {
-  //     Ok((&self.token_a_account, &self.token_b_account))
-  //   } else {
-  //     Ok((&self.token_b_account, &self.token_a_account))
-  //   }
-  // }
 }
 
 #[derive(Copy, Clone)]
@@ -712,6 +474,10 @@ impl<'a, 'b: 'a> SplTokenSwapArgs<'a, 'b> {
 
 #[derive(Copy, Clone)]
 pub struct SerumDexArgs<'a, 'b: 'a> {
+  pub dex_market_info: DexMarketInfo,
+  pub dex_market_info_acc: &'a AccountInfo<'b>,
+  pub dmi_authority: &'a AccountInfo<'b>,
+  pub open_orders: SerumDexOpenOrders<'a, 'b>,
   pub market: SerumDexMarket<'a, 'b>,
   pub request_queue_acc: &'a AccountInfo<'b>,
   pub event_queue_acc: &'a AccountInfo<'b>,
@@ -720,18 +486,23 @@ pub struct SerumDexArgs<'a, 'b: 'a> {
   pub coin_vault_acc: TokenAccount<'a, 'b>,
   pub pc_vault_acc: TokenAccount<'a, 'b>,
   pub vault_signer_acc: &'a AccountInfo<'b>,
-  pub open_orders: SerumDexOpenOrders<'a, 'b>,
   pub rent_sysvar_acc: &'a AccountInfo<'b>,
   pub program_acc: &'a AccountInfo<'b>,
 }
 
 impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
-  pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
-    const MIN_ACCOUNTS: usize = 11;
+  pub fn with_parsed_args(
+    accounts: &'a [AccountInfo<'b>],
+    program_id: &Pubkey,
+  ) -> ProtocolResult<Self> {
+    const MIN_ACCOUNTS: usize = 13;
     if !(accounts.len() == MIN_ACCOUNTS) {
       return Err(ProtocolError::InvalidAccountsLength);
     }
     let &[
+      ref dex_market_info_acc,
+      ref dmi_authority,
+      ref dmi_open_orders_acc,
       ref market_acc,
       ref request_queue_acc,
       ref event_queue_acc,
@@ -740,7 +511,6 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
       ref coin_vault_acc,
       ref pc_vault_acc,
       ref vault_signer_acc,
-      ref open_order_acc,
       ref rent_sysvar_acc,
       ref program_acc,
     ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
@@ -749,15 +519,28 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     if *market.inner().owner != *program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
-    let open_orders = SerumDexOpenOrders::new(open_order_acc)?;
+    let open_orders = SerumDexOpenOrders::new(dmi_open_orders_acc)?;
     if *open_orders.inner().owner != *program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
     if open_orders.market()? != *market.pubkey() {
       return Err(ProtocolError::InvalidSerumDexMarketAccount);
     }
+    if open_orders.owner()? != *dex_market_info_acc.key {
+      return Err(ProtocolError::InvalidAuthority);
+    }
+    if *dex_market_info_acc.owner != *program_id {
+      return Err(ProtocolError::InvalidProgramAddress);
+    }
+    let dex_market_info = DexMarketInfo::unpack(*dex_market_info_acc.data.borrow())
+      .map_err(|_| ProtocolError::InvalidAccountData)?;
+    validate_authority_pubkey(dmi_authority.key, program_id, &dex_market_info_acc.key.to_bytes(), dex_market_info.nonce)?;
 
     Ok(SerumDexArgs {
+      dex_market_info,
+      dex_market_info_acc,
+      dmi_authority,
+      open_orders,
       market,
       request_queue_acc,
       event_queue_acc,
@@ -766,7 +549,6 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
       coin_vault_acc: TokenAccount::new(coin_vault_acc)?,
       pc_vault_acc: TokenAccount::new(pc_vault_acc)?,
       vault_signer_acc,
-      open_orders,
       rent_sysvar_acc,
       program_acc,
     })
@@ -898,12 +680,12 @@ impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
       return Err(ProtocolError::InvalidStableSwapAccount);
     }
 
-    validate_authority_pubkey(
-      authority_acc.key,
-      program_acc.key,
-      swap_info_acc.key,
-      swap_info.nonce()?,
-    )?;
+    // validate_authority_pubkey(
+    //   authority_acc.key,
+    //   program_acc.key,
+    //   &swap_info_acc.key.to_bytes(),
+    //   swap_info.nonce()?,
+    // )?;
 
     Ok(StableSwapArgs {
       swap_info,
