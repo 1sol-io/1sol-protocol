@@ -447,7 +447,7 @@ export class OneSolProtocol {
     wallet,
   }: {
     wallet: PublicKey,
-  }): Promise<SwapInfo> {
+  }): Promise<SwapInfo|null> {
     const [accountItem] = await this.connection.getProgramAccounts(this.programId, {
       filters: [
         {
@@ -463,7 +463,7 @@ export class OneSolProtocol {
     });
 
     if (!accountItem) {
-      throw new Error('Swap info not found');
+      return null
     }
     const { pubkey, account } = accountItem;
     const decoded = SwapInfoLayout.decode(account.data);
