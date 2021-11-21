@@ -512,21 +512,21 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
       ref pc_vault_acc,
       ref vault_signer_acc,
       ref rent_sysvar_acc,
-      ref program_acc,
+      ref serum_program_acc,
     ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
 
     let market = SerumDexMarket::new(market_acc)?;
-    if *market.inner().owner != *program_acc.key {
+    if *market.inner().owner != *serum_program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
     let open_orders = SerumDexOpenOrders::new(dmi_open_orders_acc)?;
-    if *open_orders.inner().owner != *program_acc.key {
+    if *open_orders.inner().owner != *serum_program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
     if open_orders.market()? != *market.pubkey() {
       return Err(ProtocolError::InvalidSerumDexMarketAccount);
     }
-    if open_orders.owner()? != *dex_market_info_acc.key {
+    if open_orders.owner()? != *dmi_authority.key {
       return Err(ProtocolError::InvalidAuthority);
     }
     if *dex_market_info_acc.owner != *program_id {
@@ -534,7 +534,8 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     }
     let dex_market_info = DexMarketInfo::unpack(*dex_market_info_acc.data.borrow())
       .map_err(|_| ProtocolError::InvalidAccountData)?;
-    validate_authority_pubkey(dmi_authority.key, program_id, &dex_market_info_acc.key.to_bytes(), dex_market_info.nonce)?;
+
+    validate_authority_pubkey(dmi_authority.key, program_id, &dex_market_info_acc.key.to_bytes()[..32], dex_market_info.nonce)?;
 
     Ok(SerumDexArgs {
       dex_market_info,
@@ -550,7 +551,7 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
       pc_vault_acc: TokenAccount::new(pc_vault_acc)?,
       vault_signer_acc,
       rent_sysvar_acc,
-      program_acc,
+      program_acc: serum_program_acc,
     })
   }
 

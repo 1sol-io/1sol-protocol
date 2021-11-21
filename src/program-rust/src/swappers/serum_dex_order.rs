@@ -53,11 +53,7 @@ pub struct MarketAccounts<'a, 'info: 'a> {
   pub event_queue: &'a AccountInfo<'info>,
   pub bids: &'a AccountInfo<'info>,
   pub asks: &'a AccountInfo<'info>,
-  // The `spl_token::Account` that funds will be taken from, i.e., transferred
-  // from the user into the market's vault.
-  //
-  // For bids, this is the base currency. For asks, the quote.
-  pub order_payer_token_account: &'a AccountInfo<'info>,
+  pub order_payer_authority: &'a AccountInfo<'info>,
   // Also known as the "base" currency. For a given A/B market,
   // this is the vault for the A mint.
   pub coin_vault: &'a AccountInfo<'info>,
@@ -73,7 +69,7 @@ pub struct MarketAccounts<'a, 'info: 'a> {
 #[derive(Clone)]
 pub struct OrderbookClient<'a, 'info: 'a> {
   pub market: MarketAccounts<'a, 'info>,
-  pub authority: &'a AccountInfo<'info>,
+  pub open_order_authority: &'a AccountInfo<'info>,
   pub pc_wallet: &'a AccountInfo<'info>,
   pub dex_program: &'a AccountInfo<'info>,
   pub token_program: &'a AccountInfo<'info>,
@@ -168,8 +164,8 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       self.market.event_queue.clone(),
       self.market.bids.clone(),
       self.market.asks.clone(),
-      self.market.order_payer_token_account.clone(),
-      self.authority.clone(),
+      self.market.order_payer_authority.clone(),
+      self.open_order_authority.clone(),
       self.market.coin_vault.clone(),
       self.market.pc_vault.clone(),
       self.token_program.clone(),
@@ -195,8 +191,8 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       self.market.event_queue.key,
       self.market.bids.key,
       self.market.asks.key,
-      self.market.order_payer_token_account.key,
-      self.authority.key,
+      self.market.order_payer_authority.key,
+      self.open_order_authority.key,
       self.market.coin_vault.key,
       self.market.pc_vault.key,
       self.token_program.key,
@@ -226,13 +222,14 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     let mut accounts = vec![
       self.market.market.clone(),
       self.market.open_orders.clone(),
-      self.authority.clone(),
+      self.open_order_authority.clone(),
       self.market.coin_vault.clone(),
       self.market.pc_vault.clone(),
       self.market.coin_wallet.clone(),
       self.pc_wallet.clone(),
       self.market.vault_signer.clone(),
       self.token_program.clone(),
+      self.dex_program.clone(),
     ];
     let referral_key = match referral {
       Some(referral_acc) => {
@@ -241,13 +238,12 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       }
       None => None,
     };
-    accounts.push(self.dex_program.clone());
     let instruction = instruction::settle_funds(
       self.dex_program.key,
       self.market.market.key,
       self.token_program.key,
       self.market.open_orders.key,
-      self.authority.key,
+      self.open_order_authority.key,
       self.market.coin_vault.key,
       self.market.coin_wallet.key,
       self.market.pc_vault.key,

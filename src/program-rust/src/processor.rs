@@ -1,6 +1,6 @@
 //! Program state processor
 
-use crate::constraints::{OWNER_KEY, BASE_SEED};
+use crate::constraints::{OWNER_KEY};
 use crate::state::Status;
 use crate::{
   account_parser::{
@@ -27,7 +27,7 @@ use solana_program::{
   program::{invoke, invoke_signed},
   program_error::ProgramError,
   program_option::COption,
-  program_pack::{IsInitialized, Pack},
+  program_pack::{Pack},
   pubkey::Pubkey,
   rent::Rent,
   sysvar::{self, Sysvar},
@@ -45,8 +45,8 @@ impl Processor {
         msg!("Instruction: Initialize Dex Market Open Orders");
         Self::process_initialize_dex_mark_open_orders(program_id, &data, accounts)
       }
-      OneSolInstruction::UpdateDexMarketOpenOrders => {
-        Self::process_update_dex_mark_open_orders(program_id, accounts)
+      OneSolInstruction::UpdateDexMarketOpenOrders(data) => {
+        Self::process_update_dex_mark_open_orders(program_id, &data, accounts)
       }
       OneSolInstruction::SwapSplTokenSwap(data) => {
         msg!("Instruction: Swap TokenSwap");
@@ -114,7 +114,7 @@ impl Processor {
     accounts: &[AccountInfo],
   ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
-    let dex_market_info_acc = next_account_info(account_info_iter)?;
+    let protocol_market_info_acc = next_account_info(account_info_iter)?;
     let authority_info = next_account_info(account_info_iter)?;
     let market_acc_info = next_account_info(account_info_iter)?;
     let open_orders_info = next_account_info(account_info_iter)?;
@@ -124,12 +124,12 @@ impl Processor {
     let dex_program_id = *dex_program_id_info.key;
 
     // check onesol_market_acc_info
-    if *dex_market_info_acc.owner != *program_id {
+    if *protocol_market_info_acc.owner != *program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
     let rent = Rent::get()?;
     if !rent.is_exempt(
-      dex_market_info_acc.lamports(),
+      protocol_market_info_acc.lamports(),
       DexMarketInfo::LEN, 
     ) {
       return Err(ProtocolError::NotRentExempt.into());
@@ -138,7 +138,7 @@ impl Processor {
     validate_authority_pubkey(
       authority_info.key,
       program_id,
-      &BASE_SEED,
+      &protocol_market_info_acc.key.to_bytes()[..32],
       data.nonce,
     )?;
 
@@ -158,12 +158,12 @@ impl Processor {
       return Err(ProtocolError::InvalidRentAccount.into());
     }
 
-    if dex_market_info_acc.data.borrow()[0] == 1 {
+    if protocol_market_info_acc.data.borrow()[0] == 1 {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
 
     serum_dex_order::invoke_init_open_orders(
-      &BASE_SEED,
+      &protocol_market_info_acc.key.to_bytes()[..32],
       &dex_program_id,
       open_orders_info,
       authority_info,
@@ -182,20 +182,21 @@ impl Processor {
       coin_mint: market_coin_mint,
       open_orders: *open_orders_info.key,
     };
-    DexMarketInfo::pack(obj, &mut dex_market_info_acc.data.borrow_mut())?;
+    DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
     Ok(())
   }
 
   /// process update DexMarketInfo OpenOrders
   pub fn process_update_dex_mark_open_orders(
     program_id: &Pubkey,
+    data: &Initialize,
     accounts: &[AccountInfo],
   ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let protocol_market_info_acc = next_account_info(account_info_iter)?;
     let authority_info = next_account_info(account_info_iter)?;
-    let dex_market_acc_info = next_account_info(account_info_iter)?;
-    let dex_open_orders_info = next_account_info(account_info_iter)?;
+    let market_acc_info = next_account_info(account_info_iter)?;
+    let open_orders_info = next_account_info(account_info_iter)?;
     let rent_acc_info = next_account_info(account_info_iter)?;
     let dex_program_id_info = next_account_info(account_info_iter)?;
 
@@ -218,7 +219,7 @@ impl Processor {
     //   return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
     // }
 
-    if protocol_market_info.market != *dex_market_acc_info.key {
+    if protocol_market_info.market != *market_acc_info.key {
       msg!("protocol_market_info.market != dex_market_acc_info.key");
       return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
     }
@@ -227,20 +228,21 @@ impl Processor {
       return Err(ProtocolError::InvalidRentAccount.into());
     }
 
+    msg!("data.nonce: {}", data.nonce);
+
     serum_dex_order::invoke_init_open_orders(
-      &BASE_SEED,
+      &protocol_market_info_acc.key.to_bytes()[..],
       &dex_program_id,
-      dex_open_orders_info,
+      open_orders_info,
       authority_info,
-      dex_market_acc_info,
+      market_acc_info,
       rent_acc_info,
-      protocol_market_info.nonce,
+      data.nonce,
     )?;
 
     let mut obj = protocol_market_info;
-    obj.open_orders = *dex_open_orders_info.key;
-    // TODO remove
-    obj.status = AccountStatus::DexMarketInfo.to_u8();
+    obj.open_orders = *open_orders_info.key;
+    obj.nonce = data.nonce;
 
     DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
     Ok(())
@@ -812,7 +814,6 @@ impl Processor {
     source_token_account: &TokenAccount<'a, 'b>,
     destination_token_account: &TokenAccount<'a, 'b>,
     source_account_authority: &'a AccountInfo<'b>,
-    // authority: (&'a AccountInfo<'b>, &[&[&[u8]]]),
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
@@ -828,7 +829,7 @@ impl Processor {
     };
 
     let base_bytes = dex_args.dex_market_info_acc.key.to_bytes();
-    // TODO
+    // let base_bytes: &[u8] = &BASE_SEED;
     let authority_signature_seeds = [&base_bytes[..32], &[dex_args.dex_market_info.nonce]];
     let signers = &[&authority_signature_seeds[..]];
 
@@ -840,13 +841,13 @@ impl Processor {
         event_queue: dex_args.event_queue_acc,
         bids: dex_args.bids_acc,
         asks: dex_args.asks_acc,
-        order_payer_token_account: source_account_authority,
+        order_payer_authority: source_account_authority,
         coin_vault: dex_args.coin_vault_acc.inner(),
         pc_vault: dex_args.pc_vault_acc.inner(),
         vault_signer: dex_args.vault_signer_acc,
         coin_wallet: coin_wallet_account.inner(),
       },
-      authority: dex_args.dmi_authority,
+      open_order_authority: dex_args.dmi_authority,
       pc_wallet: pc_wallet_account.inner(),
       dex_program: dex_args.program_acc,
       token_program: spl_token_program.inner(),
@@ -858,6 +859,7 @@ impl Processor {
       DexSide::Bid => orderbook.buy(amount_in, None)?,
       DexSide::Ask => orderbook.sell(amount_in, None)?,
     }
+    msg!("serum.settle");
     orderbook.settle(None)?;
     Ok(())
   }

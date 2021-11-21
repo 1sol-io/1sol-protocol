@@ -121,7 +121,7 @@ pub enum OneSolInstruction {
   /// 3. `[writable]` open_orders account. SerumDexOpenOrders account.
   /// 4. `[]` the rend sysvar.
   /// 5. `[]` SerumDex ProgramId.
-  UpdateDexMarketOpenOrders,
+  UpdateDexMarketOpenOrders(Initialize),
 
   /// Swap the tokens in the pool.
   ///
@@ -383,7 +383,7 @@ impl OneSolInstruction {
       4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
       5 => return Err(ProtocolError::InvalidInstruction.into()),
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
-      7 => Self::UpdateDexMarketOpenOrders,
+      7 => Self::UpdateDexMarketOpenOrders(Initialize::unpack(rest)?),
       8 => return Err(ProtocolError::InvalidInstruction.into()),
       9 => Self::SwapRaydiumSwap(SwapInstruction::unpack(rest)?),
       10 => Self::InitializeSwapInfo,
