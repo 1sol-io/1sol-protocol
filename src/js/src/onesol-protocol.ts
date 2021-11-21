@@ -21,7 +21,7 @@ import {
   TransactionInstruction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import { Market } from "@project-serum/serum";
+import { Market, OpenOrders } from "@project-serum/serum";
 import { TokenSwapLayout } from "@solana/spl-token-swap";
 import {
   MintInfo as TokenMint,
@@ -114,20 +114,8 @@ export async function loadAccount(
 
 export enum AccountStatus {
   SwapInfo = 1,
-  DexMarketInfo = 2,
   Closed = 3,
 }
-
-export const DexMarketInfoLayout = BufferLayout.struct([
-  BufferLayout.u8("isInitialized"),
-  BufferLayout.u8("status"),
-  BufferLayout.u8("nonce"),
-  publicKeyLayout("market"),
-  publicKeyLayout("pcMint"),
-  publicKeyLayout("coinMint"),
-  publicKeyLayout("openOrders"),
-  publicKeyLayout("dexProgramId"),
-]);
 
 export const SwapInfoLayout = BufferLayout.struct([
   BufferLayout.u8("isInitialized"),
@@ -243,8 +231,7 @@ export class TokenSwapInfo {
 //
 export class SerumDexMarketInfo {
   constructor(
-    private dexMarketInfo: PublicKey,
-    private authority: PublicKey,
+    private openOrders: PublicKey,
     private market: PublicKey,
     private requestQueue: PublicKey,
     private eventQueue: PublicKey,
@@ -253,11 +240,9 @@ export class SerumDexMarketInfo {
     private coinVault: PublicKey,
     private pcVault: PublicKey,
     private vaultSigner: PublicKey,
-    private openOrders: PublicKey,
     private programId: PublicKey
   ) {
-    this.dexMarketInfo = dexMarketInfo;
-    this.authority = authority;
+    this.openOrders = openOrders;
     this.market = market;
     this.requestQueue = requestQueue;
     this.eventQueue = eventQueue;
@@ -266,14 +251,11 @@ export class SerumDexMarketInfo {
     this.coinVault = coinVault;
     this.pcVault = pcVault;
     this.vaultSigner = vaultSigner;
-    this.openOrders = openOrders;
     this.programId = programId;
   }
 
   toKeys(): Array<AccountMeta> {
     const keys = [
-      { pubkey: this.dexMarketInfo, isSigner: false, isWritable: true },
-      { pubkey: this.authority, isSigner: false, isWritable: false },
       { pubkey: this.openOrders, isSigner: false, isWritable: true },
       { pubkey: this.market, isSigner: false, isWritable: true },
       {
@@ -413,6 +395,11 @@ export class RaydiumAmmInfo {
  * A program to exchange tokens against a pool of liquidity
  */
 export class OneSolProtocol {
+
+  private _openOrdersAccountsCache: {
+    [publicKey: string]: { accounts: OpenOrders[]; ts: number };
+  };
+
   /**
    * Create a Token object attached to the specific token
    *
@@ -431,6 +418,7 @@ export class OneSolProtocol {
     this.programId = programId;
     this.tokenProgramId = tokenProgramId;
     this.wallet = wallet;
+    this._openOrdersAccountsCache = {};
   }
 
   /**
@@ -549,11 +537,136 @@ export class OneSolProtocol {
       { pubkey: owner, isSigner: true, isWritable: false },
     ];
 
-
     return new TransactionInstruction({
       keys,
       programId: programId,
       data,
+    });
+  }
+
+  async findOpenOrdersAccountForOwner({
+    owner,
+    cacheDurationMs = 0,
+    serumProgramId,
+    market,
+  }: {
+    owner: PublicKey
+    market: PublicKey,
+    cacheDurationMs?: number,
+    serumProgramId: PublicKey,
+  }) {
+    const ownerStr = `${owner.toBase58()}-${market.toBase58()}`;
+    const now = new Date().getTime();
+    if (ownerStr in this._openOrdersAccountsCache &&
+      now - this._openOrdersAccountsCache[ownerStr].ts < cacheDurationMs) {
+      return this._openOrdersAccountsCache[ownerStr].accounts;
+    }
+    const layout = OpenOrders.getLayout(serumProgramId);
+    const openOrdersAccounts: OpenOrders[] = [];
+    (await this.connection.getProgramAccounts(serumProgramId, {
+      filters: [
+        {
+          dataSize: layout.span,
+        },
+        {
+          memcmp: {
+            offset: layout.offsetOf('market'),
+            bytes: market.toBase58(),
+          },
+        },
+        {
+          memcmp: {
+            offset: layout.offsetOf('owner'),
+            bytes: owner.toBase58(),
+          }
+        },
+      ],
+    })).map(({ pubkey, account }) => {
+      try {
+        return OpenOrders.fromAccountInfo(pubkey, account, account.owner)
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    }).forEach((item) => {
+      if (item) {
+        openOrdersAccounts.push(item);
+      }
+    });
+
+    this._openOrdersAccountsCache[ownerStr] = {
+      accounts: openOrdersAccounts,
+      ts: now,
+    }
+    return openOrdersAccounts;
+  }
+
+  async createOpenOrdersAccountInstruction({
+    market, owner, serumProgramId
+  }: {
+    market: PublicKey
+    owner: PublicKey,
+    serumProgramId: PublicKey,
+  },
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>
+  ): Promise<PublicKey> {
+    const openOrdersAccounts = Keypair.generate();
+    instructions.push(await OneSolProtocol.makeCreateOpenOrdersAccountInstruction({
+      connection: this.connection,
+      owner: owner,
+      newAccountAddress: openOrdersAccounts.publicKey,
+      serumProgramId,
+    }));
+    signers.push(openOrdersAccounts);
+    this._openOrdersAccountsCache[`${owner.toBase58()}-${market.toBase58()}`].ts = 0;
+
+    return openOrdersAccounts.publicKey;
+  }
+
+  async findOrCreateOpenOrdersAccount({ market, owner, serumProgramId, instructions, signers, cacheDurationMs = 0 }: {
+    market: PublicKey,
+    owner: PublicKey,
+    serumProgramId: PublicKey,
+    cacheDurationMs?: number,
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>
+  }): Promise<PublicKey> {
+    const openOrders = await this.findOpenOrdersAccountForOwner({
+      owner,
+      market,
+      serumProgramId,
+      cacheDurationMs
+    });
+    if (openOrders.length === 0) {
+      const openOrdersAddress = await this.createOpenOrdersAccountInstruction({
+        market, owner, serumProgramId,
+      }, instructions, signers);
+      return openOrdersAddress;
+    } else {
+      return openOrders[0].address;
+    }
+  }
+
+  static async makeCreateOpenOrdersAccountInstruction(
+    {
+      connection, owner, newAccountAddress, serumProgramId
+    }: {
+      connection: Connection,
+      owner: PublicKey,
+      newAccountAddress: PublicKey,
+      serumProgramId: PublicKey,
+    }
+  ) {
+    const layout = OpenOrders.getLayout(serumProgramId);
+    return SystemProgram.createAccount({
+      fromPubkey: owner,
+      newAccountPubkey: newAccountAddress,
+      lamports: await connection.getMinimumBalanceForRentExemption(
+        layout.span,
+      ),
+      space: layout.span,
+      programId: serumProgramId,
     });
   }
 
@@ -1863,52 +1976,31 @@ export async function loadTokenSwapInfo(
   );
 }
 
+
+
 export async function loadSerumDexMarket(
   connection: Connection,
   pubkey: PublicKey,
   programId: PublicKey,
-  extPubkey: PublicKey,
-  extProgramId: PublicKey
+  openOrders: PublicKey,
 ): Promise<SerumDexMarketInfo> {
-  const [dexMarketData, extDexMarketData] = await Promise.all([
-    loadAccount(connection, pubkey, programId),
-    loadAccount(connection, extPubkey, extProgramId),
-  ]);
+  const decoded = Market.getLayout(programId).decoded(await loadAccount(connection, pubkey, programId));
 
-  const marketDecoded = Market.getLayout(programId).decode(dexMarketData);
-  const extMarketDecoded = DexMarketInfoLayout.decode(extDexMarketData);
-
-  const extMarket = new PublicKey(extMarketDecoded.market);
-  if (!pubkey.equals(extMarket)) {
-    throw new Error(
-      `extMarket(${extMarket.toString()}) not equals pubkey(${pubkey.toString()})`
-    );
-  }
-
-  // return new SerumDexMarketInfo(programId, market, openOrders.publicKey);
-  const requestQueue = new PublicKey(marketDecoded.requestQueue);
-  const eventQueue = new PublicKey(marketDecoded.eventQueue);
-  const bids = new PublicKey(marketDecoded.bids);
-  const asks = new PublicKey(marketDecoded.asks);
-  const coinVault = new PublicKey(marketDecoded.baseVault);
-  const pcVault = new PublicKey(marketDecoded.quoteVault);
-  const vaultSignerNonce = marketDecoded.vaultSignerNonce;
+  const requestQueue = new PublicKey(decoded.requestQueue);
+  const eventQueue = new PublicKey(decoded.eventQueue);
+  const bids = new PublicKey(decoded.bids);
+  const asks = new PublicKey(decoded.asks);
+  const coinVault = new PublicKey(decoded.baseVault);
+  const pcVault = new PublicKey(decoded.quoteVault);
+  const vaultSignerNonce = decoded.vaultSignerNonce;
 
   const vaultSigner = await PublicKey.createProgramAddress(
     [pubkey.toBuffer()].concat(vaultSignerNonce.toArrayLike(Buffer, "le", 8)),
     programId
   );
 
-  const authority = await PublicKey.createProgramAddress(
-    [extPubkey.toBuffer()].concat(extMarketDecoded.nonce.toArrayLike(Buffer, "le", 8)),
-    extProgramId,
-  )
-
-  const openOrders = new PublicKey(extMarketDecoded.openOrders);
-
   return new SerumDexMarketInfo(
-    extPubkey,
-    authority,
+    openOrders,
     pubkey,
     requestQueue,
     eventQueue,
@@ -1917,7 +2009,6 @@ export async function loadSerumDexMarket(
     coinVault,
     pcVault,
     vaultSigner,
-    openOrders,
     programId
   );
 }

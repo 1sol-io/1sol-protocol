@@ -1,36 +1,34 @@
 //! Program state processor
 
-use crate::constraints::{OWNER_KEY};
+use crate::constraints::OWNER_KEY;
 use crate::state::Status;
 use crate::{
   account_parser::{
-    validate_authority_pubkey , RaydiumSwapArgs, SerumDexArgs, SerumDexMarket,
-    SplTokenProgram, SplTokenSwapArgs, StableSwapArgs, SwapInfoArgs, TokenAccount,
-    UserArgs,
+    RaydiumSwapArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
+    StableSwapArgs, SwapInfoArgs, TokenAccount, UserArgs,
   },
   error::ProtocolError,
   instruction::{
-    ExchangerType, Initialize, OneSolInstruction, SwapInInstruction, SwapInstruction,
-    SwapOutInstruction,
+    ExchangerType, OneSolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
   },
-  state::{DexMarketInfo, SwapInfo, Status as AccountStatus},
+  state::{SwapInfo},
   swappers::{raydium_swap, serum_dex_order, spl_token_swap},
 };
-use arrayref::{array_refs};
+use arrayref::array_refs;
 // use safe_transmute::to_bytes::transmute_one_to_bytes;
 use serum_dex::matching::Side as DexSide;
 use solana_program::{
-  account_info::{next_account_info, AccountInfo},
+  account_info::AccountInfo,
   entrypoint::ProgramResult,
   log::sol_log_compute_units,
   msg,
   program::{invoke, invoke_signed},
   program_error::ProgramError,
   program_option::COption,
-  program_pack::{Pack},
+  program_pack::Pack,
   pubkey::Pubkey,
   rent::Rent,
-  sysvar::{self, Sysvar},
+  sysvar::{Sysvar},
 };
 // use std::convert::identity;
 /// Program state handler.
@@ -41,13 +39,6 @@ impl Processor {
   pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
     let instruction = OneSolInstruction::unpack(input)?;
     match instruction {
-      OneSolInstruction::InitDexMarketOpenOrders(data) => {
-        msg!("Instruction: Initialize Dex Market Open Orders");
-        Self::process_initialize_dex_mark_open_orders(program_id, &data, accounts)
-      }
-      OneSolInstruction::UpdateDexMarketOpenOrders(data) => {
-        Self::process_update_dex_mark_open_orders(program_id, &data, accounts)
-      }
       OneSolInstruction::SwapSplTokenSwap(data) => {
         msg!("Instruction: Swap TokenSwap");
         Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::SplTokenSwap)
@@ -107,147 +98,6 @@ impl Processor {
     }
   }
 
-  /// process initialize dex market open orders
-  pub fn process_initialize_dex_mark_open_orders(
-    program_id: &Pubkey,
-    data: &Initialize,
-    accounts: &[AccountInfo],
-  ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let protocol_market_info_acc = next_account_info(account_info_iter)?;
-    let authority_info = next_account_info(account_info_iter)?;
-    let market_acc_info = next_account_info(account_info_iter)?;
-    let open_orders_info = next_account_info(account_info_iter)?;
-    let rent_acc_info = next_account_info(account_info_iter)?;
-    let dex_program_id_info = next_account_info(account_info_iter)?;
-
-    let dex_program_id = *dex_program_id_info.key;
-
-    // check onesol_market_acc_info
-    if *protocol_market_info_acc.owner != *program_id {
-      return Err(ProtocolError::InvalidProgramAddress.into());
-    }
-    let rent = Rent::get()?;
-    if !rent.is_exempt(
-      protocol_market_info_acc.lamports(),
-      DexMarketInfo::LEN, 
-    ) {
-      return Err(ProtocolError::NotRentExempt.into());
-    }
-
-    validate_authority_pubkey(
-      authority_info.key,
-      program_id,
-      &protocol_market_info_acc.key.to_bytes()[..32],
-      data.nonce,
-    )?;
-
-    if *open_orders_info.owner != dex_program_id {
-      return Err(ProtocolError::InvalidProgramAddress.into());
-    }
-    let market = SerumDexMarket::new(market_acc_info)?;
-
-    let market_coin_mint = market.coin_mint()?;
-    let market_pc_mint = market.pc_mint()?;
-
-    if *market.inner().owner != dex_program_id {
-      return Err(ProtocolError::InvalidProgramAddress.into());
-    }
-
-    if !sysvar::rent::check_id(rent_acc_info.key) {
-      return Err(ProtocolError::InvalidRentAccount.into());
-    }
-
-    if protocol_market_info_acc.data.borrow()[0] == 1 {
-      return Err(ProtocolError::InvalidAccountFlags.into());
-    }
-
-    serum_dex_order::invoke_init_open_orders(
-      &protocol_market_info_acc.key.to_bytes()[..32],
-      &dex_program_id,
-      open_orders_info,
-      authority_info,
-      market_acc_info,
-      rent_acc_info,
-      data.nonce,
-    )?;
-
-    let obj = DexMarketInfo {
-      is_initialized: 1,
-      status: AccountStatus::DexMarketInfo.to_u8(),
-      nonce: data.nonce,
-      dex_program_id: dex_program_id,
-      market: *market_acc_info.key,
-      pc_mint: market_pc_mint,
-      coin_mint: market_coin_mint,
-      open_orders: *open_orders_info.key,
-    };
-    DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
-    Ok(())
-  }
-
-  /// process update DexMarketInfo OpenOrders
-  pub fn process_update_dex_mark_open_orders(
-    program_id: &Pubkey,
-    data: &Initialize,
-    accounts: &[AccountInfo],
-  ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let protocol_market_info_acc = next_account_info(account_info_iter)?;
-    let authority_info = next_account_info(account_info_iter)?;
-    let market_acc_info = next_account_info(account_info_iter)?;
-    let open_orders_info = next_account_info(account_info_iter)?;
-    let rent_acc_info = next_account_info(account_info_iter)?;
-    let dex_program_id_info = next_account_info(account_info_iter)?;
-
-    let dex_program_id = *dex_program_id_info.key;
-
-    if *protocol_market_info_acc.owner != *program_id {
-      return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
-    }
-    if !protocol_market_info_acc.is_writable {
-      return Err(ProtocolError::ReadonlyAccount.into());
-    }
-
-    let protocol_market_info = DexMarketInfo::unpack(&protocol_market_info_acc.try_borrow_data()?)
-      .map_err(|e| {
-        msg!("DexMarketInfo::unpack err: {}", e);
-        ProtocolError::InvalidDexMarketInfoAccount
-      })?;
-    // TODO remove
-    // if !protocol_market_info.is_initialized() || protocol_market_info.status != AccountStatus::DexMarketInfo.to_u8() {
-    //   return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
-    // }
-
-    if protocol_market_info.market != *market_acc_info.key {
-      msg!("protocol_market_info.market != dex_market_acc_info.key");
-      return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
-    }
-
-    if !sysvar::rent::check_id(rent_acc_info.key) {
-      return Err(ProtocolError::InvalidRentAccount.into());
-    }
-
-    msg!("data.nonce: {}", data.nonce);
-
-    serum_dex_order::invoke_init_open_orders(
-      &protocol_market_info_acc.key.to_bytes()[..],
-      &dex_program_id,
-      open_orders_info,
-      authority_info,
-      market_acc_info,
-      rent_acc_info,
-      data.nonce,
-    )?;
-
-    let mut obj = protocol_market_info;
-    obj.open_orders = *open_orders_info.key;
-    obj.nonce = data.nonce;
-
-    DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
-    Ok(())
-  }
-
   pub fn process_initialize_swap_info(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -273,7 +123,7 @@ impl Processor {
     if swap_info_account.data.borrow()[0] == 1 {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
-    let swap_info  = SwapInfo::new(user_account.key);
+    let swap_info = SwapInfo::new(user_account.key);
     SwapInfo::pack(swap_info, &mut swap_info_account.data.borrow_mut())?;
     Ok(())
   }
@@ -701,7 +551,7 @@ impl Processor {
       .checked_sub(data.expect_amount_out.get())
       .map(|v| v.checked_mul(25).unwrap().checked_div(100).unwrap_or(0))
       .unwrap_or(0);
-    
+
     if fee > 0 {
       Self::token_transfer(
         spl_token_program.inner(),
@@ -817,7 +667,9 @@ impl Processor {
     spl_token_program: &SplTokenProgram<'a, 'b>,
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
-    let dex_args = SerumDexArgs::with_parsed_args(accounts, program_id)?;
+    let dex_args = SerumDexArgs::with_parsed_args(accounts)?;
+
+    dex_args.check_open_orders_owner(source_account_authority.key)?;
 
     let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
 
@@ -828,11 +680,6 @@ impl Processor {
       DexSide::Ask => (destination_token_account, source_token_account),
     };
 
-    let base_bytes = dex_args.dex_market_info_acc.key.to_bytes();
-    // let base_bytes: &[u8] = &BASE_SEED;
-    let authority_signature_seeds = [&base_bytes[..32], &[dex_args.dex_market_info.nonce]];
-    let signers = &[&authority_signature_seeds[..]];
-
     let orderbook = serum_dex_order::OrderbookClient {
       market: serum_dex_order::MarketAccounts {
         market: dex_args.market.inner(),
@@ -841,18 +688,17 @@ impl Processor {
         event_queue: dex_args.event_queue_acc,
         bids: dex_args.bids_acc,
         asks: dex_args.asks_acc,
-        order_payer_authority: source_account_authority,
+        order_payer_authority: source_token_account.inner(),
         coin_vault: dex_args.coin_vault_acc.inner(),
         pc_vault: dex_args.pc_vault_acc.inner(),
         vault_signer: dex_args.vault_signer_acc,
         coin_wallet: coin_wallet_account.inner(),
       },
-      open_order_authority: dex_args.dmi_authority,
+      open_order_authority: source_account_authority,
       pc_wallet: pc_wallet_account.inner(),
       dex_program: dex_args.program_acc,
       token_program: spl_token_program.inner(),
       rent: dex_args.rent_sysvar_acc,
-      signers_seed: signers,
     };
     // orderbook.cancel_order(side)?;
     match side {

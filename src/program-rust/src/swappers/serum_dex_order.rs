@@ -4,7 +4,7 @@ use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
   instruction::{AccountMeta, Instruction},
-  program::invoke_signed,
+  program::{invoke, invoke_signed},
   pubkey::Pubkey,
   sysvar::rent,
 };
@@ -74,7 +74,6 @@ pub struct OrderbookClient<'a, 'info: 'a> {
   pub dex_program: &'a AccountInfo<'info>,
   pub token_program: &'a AccountInfo<'info>,
   pub rent: &'a AccountInfo<'info>,
-  pub signers_seed: &'a [&'a [&'a [u8]]],
 }
 
 impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
@@ -210,11 +209,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     )
     .map_err(|_| ProtocolError::InvalidDelegate)?;
 
-    invoke_signed(
-      &instruction,
-      &accounts[..],
-      self.signers_seed,
-    )?;
+    invoke(&instruction, &accounts[..])?;
     Ok(())
   }
 
@@ -251,11 +246,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       referral_key,
       self.market.vault_signer.key,
     )?;
-    invoke_signed(
-      &instruction,
-      &accounts[..],
-      self.signers_seed,
-    )?;
+    invoke(&instruction, &accounts[..])?;
     Ok(())
   }
 }
@@ -265,6 +256,7 @@ fn coin_lots(market: &MarketState, size: u64) -> u64 {
   size.checked_div(market.coin_lot_size).unwrap()
 }
 
+#[allow(dead_code)]
 pub fn invoke_init_open_orders<'a>(
   base_seed: &[u8],
   program_id: &Pubkey,

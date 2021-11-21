@@ -103,25 +103,6 @@ pub struct SwapOutInstruction {
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum OneSolInstruction {
-  /// Create Dex Market
-  ///
-  /// 0. `[writable, signer]` new DexMarketInfo account to create.
-  /// 1. `[]` $authority `DexMarketInfo's authority`
-  /// 2. `[writable]` market account. SerumDexMarket account.
-  /// 3. `[writable]` open_orders account. SerumDexOpenOrders account.
-  /// 4. `[]` the rend sysvar.
-  /// 5. `[]` SerumDex ProgramId.
-  InitDexMarketOpenOrders(Initialize),
-
-  /// Update DexMarket OpenOrders
-  ///
-  /// 0. `[writable]` DexMarketInfo account to update.
-  /// 1. `[]` $authority `AmmInfo's authority`
-  /// 2. `[writable]` market account. SerumDexMarket account.
-  /// 3. `[writable]` open_orders account. SerumDexOpenOrders account.
-  /// 4. `[]` the rend sysvar.
-  /// 5. `[]` SerumDex ProgramId.
-  UpdateDexMarketOpenOrders(Initialize),
 
   /// Swap the tokens in the pool.
   ///
@@ -378,12 +359,10 @@ impl OneSolInstruction {
   pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
     let (&tag, rest) = input.split_first().ok_or(ProtocolError::InvalidInput)?;
     Ok(match tag {
-      2 => Self::InitDexMarketOpenOrders(Initialize::unpack(rest)?),
       3 => Self::SwapSplTokenSwap(SwapInstruction::unpack(rest)?),
       4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
       5 => return Err(ProtocolError::InvalidInstruction.into()),
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
-      7 => Self::UpdateDexMarketOpenOrders(Initialize::unpack(rest)?),
       8 => return Err(ProtocolError::InvalidInstruction.into()),
       9 => Self::SwapRaydiumSwap(SwapInstruction::unpack(rest)?),
       10 => Self::InitializeSwapInfo,
@@ -398,18 +377,6 @@ impl OneSolInstruction {
       19 => Self::SwapRaydiumOut(SwapOutInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
-  }
-}
-
-impl Initialize {
-  const DATA_LEN: usize = 1;
-
-  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    if input.len() < Initialize::DATA_LEN {
-      return Err(ProtocolError::InvalidInput.into());
-    }
-    let &[nonce] = array_ref![input, 0, Initialize::DATA_LEN];
-    Ok(Self { nonce })
   }
 }
 
@@ -483,52 +450,9 @@ impl SwapOutInstruction {
   }
 }
 
-// impl SwapTwoStepsInstruction {
-//   const DATA_LEN: usize = 28;
-
-//   /// u64, u64, u64, u8,
-//   fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-//     if input.len() < SwapTwoStepsInstruction::DATA_LEN {
-//       return Err(ProtocolError::InvalidInput.into());
-//     }
-//     let arr_data = array_ref![input, 0, SwapTwoStepsInstruction::DATA_LEN];
-//     let (&amount_in_arr, &expect_amount_out_arr, &minimum_amount_out_arr, &step1_arr, &step2_arr) =
-//       array_refs![arr_data, 8, 8, 8, 2, 2];
-//     let amount_in =
-//       NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(ProtocolError::InvalidInput)?;
-//     let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
-//       .ok_or(ProtocolError::InvalidInput)?;
-//     let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
-//       .ok_or(ProtocolError::InvalidInput)?;
-//     if expect_amount_out.get() < minimum_amount_out.get() || expect_amount_out.get() == 0 {
-//       return Err(ProtocolError::InvalidExpectAmountOut.into());
-//     }
-//     let step1 = ExchangeStep::unpack(&step1_arr)?;
-//     let step2 = ExchangeStep::unpack(&step2_arr)?;
-//     Ok(SwapTwoStepsInstruction {
-//       amount_in,
-//       expect_amount_out,
-//       minimum_amount_out,
-//       step1,
-//       step2,
-//     })
-//   }
-// }
-
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn test_unpack_initialize() {
-    let nonce = 101;
-    let mut buf = Vec::with_capacity(1);
-    buf.push(nonce);
-
-    let i = Initialize::unpack(&buf[..]).unwrap();
-
-    assert_eq!(i.nonce, nonce)
-  }
 
   #[test]
   fn test_unpack_swap_token_swap() {

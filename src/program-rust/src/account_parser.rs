@@ -1,4 +1,8 @@
-use crate::{check_unreachable, error::{ProtocolError, ProtocolResult}, state::{DexMarketInfo, SwapInfo}};
+use crate::{
+  check_unreachable,
+  error::{ProtocolError, ProtocolResult},
+  state::SwapInfo,
+};
 use arrayref::{array_ref, array_refs};
 use serum_dex::{matching::Side as DexSide, state::AccountFlag as SerumAccountFlag};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
@@ -198,6 +202,7 @@ fn unpack_coption_key(src: &[u8; 36]) -> ProtocolResult<Option<Pubkey>> {
   }
 }
 
+#[allow(dead_code)]
 /// Calculates the authority id by generating a program address.
 pub fn validate_authority_pubkey(
   authority: &Pubkey,
@@ -474,9 +479,6 @@ impl<'a, 'b: 'a> SplTokenSwapArgs<'a, 'b> {
 
 #[derive(Copy, Clone)]
 pub struct SerumDexArgs<'a, 'b: 'a> {
-  pub dex_market_info: DexMarketInfo,
-  pub dex_market_info_acc: &'a AccountInfo<'b>,
-  pub dmi_authority: &'a AccountInfo<'b>,
   pub open_orders: SerumDexOpenOrders<'a, 'b>,
   pub market: SerumDexMarket<'a, 'b>,
   pub request_queue_acc: &'a AccountInfo<'b>,
@@ -491,18 +493,13 @@ pub struct SerumDexArgs<'a, 'b: 'a> {
 }
 
 impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
-  pub fn with_parsed_args(
-    accounts: &'a [AccountInfo<'b>],
-    program_id: &Pubkey,
-  ) -> ProtocolResult<Self> {
-    const MIN_ACCOUNTS: usize = 13;
+  pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
+    const MIN_ACCOUNTS: usize = 11;
     if accounts.len() != MIN_ACCOUNTS {
       return Err(ProtocolError::InvalidAccountsLength);
     }
     let &[
-      ref dex_market_info_acc,
-      ref dmi_authority,
-      ref dmi_open_orders_acc,
+      ref open_orders_acc,
       ref market_acc,
       ref request_queue_acc,
       ref event_queue_acc,
@@ -519,28 +516,15 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     if *market.inner().owner != *serum_program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
-    let open_orders = SerumDexOpenOrders::new(dmi_open_orders_acc)?;
+    let open_orders = SerumDexOpenOrders::new(open_orders_acc)?;
     if *open_orders.inner().owner != *serum_program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
     if open_orders.market()? != *market.pubkey() {
       return Err(ProtocolError::InvalidSerumDexMarketAccount);
     }
-    if open_orders.owner()? != *dmi_authority.key {
-      return Err(ProtocolError::InvalidAuthority);
-    }
-    if *dex_market_info_acc.owner != *program_id {
-      return Err(ProtocolError::InvalidProgramAddress);
-    }
-    let dex_market_info = DexMarketInfo::unpack(*dex_market_info_acc.data.borrow())
-      .map_err(|_| ProtocolError::InvalidAccountData)?;
-
-    validate_authority_pubkey(dmi_authority.key, program_id, &dex_market_info_acc.key.to_bytes()[..32], dex_market_info.nonce)?;
 
     Ok(SerumDexArgs {
-      dex_market_info,
-      dex_market_info_acc,
-      dmi_authority,
       open_orders,
       market,
       request_queue_acc,
@@ -561,6 +545,13 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     } else {
       Ok(DexSide::Bid)
     }
+  }
+
+  pub fn check_open_orders_owner(&self, target: &Pubkey) -> ProtocolResult<()> {
+    if self.open_orders.owner()? != *target {
+      return Err(ProtocolError::InvalidOpenOrdersAccount);
+    }
+    Ok(())
   }
 }
 

@@ -170,6 +170,9 @@ pub enum ProtocolError {
   #[error("invalid open orders account data")]
   InvalidOpenOrdersAccountData,
 
+  #[error("invalid open orders account")]
+  InvalidOpenOrdersAccount,
+
   #[error("invalid stable-swap account")]
   InvalidStableSwapAccount,
 
@@ -309,6 +312,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidFeeTokenAccount => {
         msg!("Error: InvalidFeeTokenAccount")
+      }
+      ProtocolError::InvalidOpenOrdersAccount => {
+        msg!("Error: InvalidOpenOrdersAccount")
       }
     }
   }

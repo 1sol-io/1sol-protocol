@@ -10,7 +10,6 @@ use solana_program::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
   SwapInfo,
-  DexMarketInfo,
   Closed,
 }
 
@@ -18,7 +17,6 @@ impl Status {
   pub fn from_u8(status: u8) -> Result<Self, ProgramError> {
     match status {
       1 => Ok(Status::SwapInfo),
-      2 => Ok(Status::DexMarketInfo),
       3 => Ok(Status::Closed),
       _ => Err(ProgramError::InvalidArgument),
     }
@@ -27,91 +25,8 @@ impl Status {
   pub fn to_u8(&self) -> u8 {
     match self {
       Status::SwapInfo => 1,
-      Status::DexMarketInfo => 2,
       Status::Closed => 3,
     }
-  }
-}
-
-/// Onesol program serum dex info state.
-#[repr(C)]
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub struct DexMarketInfo {
-  /// Initialized state.
-  pub is_initialized: u8,
-  /// status
-  pub status: u8,
-  /// nonce
-  pub nonce: u8,
-  /// market address
-  pub market: Pubkey,
-  /// pc_mint
-  pub pc_mint: Pubkey,
-  /// coin_mint
-  pub coin_mint: Pubkey,
-  /// open orders account
-  pub open_orders: Pubkey,
-  /// SerumDex program id
-  pub dex_program_id: Pubkey,
-}
-
-impl Sealed for DexMarketInfo {}
-impl IsInitialized for DexMarketInfo {
-  fn is_initialized(&self) -> bool {
-    self.is_initialized == 1
-  }
-}
-
-impl Pack for DexMarketInfo {
-  const LEN: usize = 163;
-
-  fn pack_into_slice(&self, output: &mut [u8]) {
-    let output = array_mut_ref![output, 0, 163];
-    #[rustfmt::skip]
-    let (
-      is_initialized,
-      status,
-      nonce,
-      market,
-      pc_mint,
-      coin_mint,
-      open_orders,
-      dex_program_id,
-    ) = mut_array_refs![output, 1, 1, 1, 32, 32, 32, 32, 32];
-    is_initialized.copy_from_slice(&[self.is_initialized]);
-    status.copy_from_slice(&[self.status]);
-    nonce.copy_from_slice(&[self.nonce]);
-    market.copy_from_slice(self.market.as_ref());
-    pc_mint.copy_from_slice(self.pc_mint.as_ref());
-    coin_mint.copy_from_slice(self.coin_mint.as_ref());
-    open_orders.copy_from_slice(self.open_orders.as_ref());
-    dex_program_id.copy_from_slice(self.dex_program_id.as_ref());
-  }
-
-  fn unpack_from_slice(input: &[u8]) -> Result<Self, ProgramError> {
-    let input = array_ref![input, 0, 163];
-    #[rustfmt::skip]
-    let (
-      &[is_initialized],
-      &[status],
-      &[nonce],
-      market,
-      pc_mint,
-      coin_mint,
-      open_orders,
-      dex_program_id
-    ) =
-      array_refs![input, 1, 1, 1, 32, 32, 32, 32, 32];
-    Ok(Self {
-      is_initialized: is_initialized,
-      status: status,
-      nonce: nonce,
-      market: Pubkey::new(market),
-      pc_mint: Pubkey::new(pc_mint),
-      coin_mint: Pubkey::new(coin_mint),
-      open_orders: Pubkey::new(open_orders),
-      dex_program_id: Pubkey::new(dex_program_id),
-    })
   }
 }
 
