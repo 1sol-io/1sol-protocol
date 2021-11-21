@@ -170,6 +170,9 @@ pub enum ProtocolError {
   #[error("invalid open orders account data")]
   InvalidOpenOrdersAccountData,
 
+  #[error("invalid open orders account")]
+  InvalidOpenOrdersAccount,
+
   #[error("invalid stable-swap account")]
   InvalidStableSwapAccount,
 
@@ -205,6 +208,9 @@ pub enum ProtocolError {
 
   #[error("invalid serum-dex program id")]
   InvalidSerumDexProgramId,
+
+  #[error("invalid fee token account")]
+  InvalidFeeTokenAccount,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -303,6 +309,12 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidSerumDexProgramId => {
         msg!("Error: InvalidSerumDexProgramId")
+      }
+      ProtocolError::InvalidFeeTokenAccount => {
+        msg!("Error: InvalidFeeTokenAccount")
+      }
+      ProtocolError::InvalidOpenOrdersAccount => {
+        msg!("Error: InvalidOpenOrdersAccount")
       }
     }
   }
