@@ -584,6 +584,9 @@ impl Processor {
       .token_source_account
       .check_owner(user_args.source_account_owner.key, false)?;
 
+    if !swap_info_args.swap_info_acc.is_writable {
+      return Err(ProtocolError::ReadonlyAccount.into());
+    }
     match swap_info_args.swap_info.token_account {
       COption::Some(k) => {
         if k != *user_args.token_source_account.pubkey() {
@@ -712,6 +715,14 @@ impl Processor {
         fee,
       )?;
     }
+    let mut swap_info = swap_info_args.swap_info;
+    swap_info.token_latest_amount = to_amount_include_fee;
+    swap_info.token_account = COption::None;
+
+    SwapInfo::pack(
+      swap_info,
+      &mut swap_info_args.swap_info_acc.data.borrow_mut(),
+    )?;
     Ok(())
   }
 
