@@ -2,6 +2,7 @@
 
 use crate::constraints::OWNER_KEY;
 use crate::instruction::UpdateDexMarketOpenOrders;
+use crate::state::Status;
 use crate::{
   account_parser::{
     validate_authority_pubkey , RaydiumSwapArgs, SerumDexArgs, SerumDexMarket,
@@ -271,16 +272,10 @@ impl Processor {
     if !user_account.is_signer {
       return Err(ProtocolError::InvalidSignerAccount.into());
     }
-    let mut swap_info = SwapInfo::unpack_unchecked(*swap_info_account.try_borrow_data()?)?;
-    if swap_info.is_initialized() {
+    if swap_info_account.data.borrow()[0] == 1 {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
-    swap_info.is_initialized = 1;
-    swap_info.owner = *user_account.key;
-    swap_info.status = 1;
-    swap_info.token_latest_amount = 0;
-    swap_info.token_account = COption::None;
-
+    let swap_info  = SwapInfo::new(user_account.key);
     SwapInfo::pack(swap_info, &mut swap_info_account.data.borrow_mut())?;
     Ok(())
   }
@@ -294,6 +289,9 @@ impl Processor {
       return Err(ProtocolError::InvalidProgramAddress.into());
     }
     let mut swap_info = SwapInfo::unpack(*swap_info_account.try_borrow_data()?)?;
+    if Status::from_u8(swap_info.status)? != Status::SwapInfo {
+      return Err(ProtocolError::InvalidAccountFlags.into());
+    }
     let token_account = TokenAccount::new(token_account_info)?;
     token_account.check_owner(&swap_info.owner, true)?;
     swap_info.token_account = COption::Some(*token_account.pubkey());
@@ -834,6 +832,7 @@ impl Processor {
     };
 
     let base_bytes = dex_args.dex_market_info_acc.key.to_bytes();
+    // TODO
     let authority_signature_seeds = [&base_bytes[..32], &[dex_args.dex_market_info.nonce]];
     let signers = &[&authority_signature_seeds[..]];
 

@@ -7,6 +7,32 @@ use solana_program::{
   pubkey::Pubkey,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Status {
+  SwapInfo,
+  DexMarketInfo,
+  Closed,
+}
+
+impl Status {
+  pub fn from_u8(status: u8) -> Result<Self, ProgramError> {
+    match status {
+      1 => Ok(Status::SwapInfo),
+      2 => Ok(Status::DexMarketInfo),
+      3 => Ok(Status::Closed),
+      _ => Err(ProgramError::InvalidArgument),
+    }
+  }
+
+  pub fn to_u8(&self) -> u8 {
+    match self {
+      Status::SwapInfo => 1,
+      Status::DexMarketInfo => 2,
+      Status::Closed => 3,
+    }
+  }
+}
+
 /// Onesol program serum dex info state.
 #[repr(C)]
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -102,6 +128,18 @@ pub struct SwapInfo {
   pub owner: Pubkey,
   /// token account
   pub token_account: COption<Pubkey>,
+}
+
+impl SwapInfo {
+  pub fn new(owner: &Pubkey) -> Self {
+    Self {
+      is_initialized: 1,
+      status: Status::SwapInfo.to_u8(),
+      token_latest_amount: 0,
+      owner: *owner,
+      token_account: COption::None,
+    }
+  }
 }
 
 impl Sealed for SwapInfo {}

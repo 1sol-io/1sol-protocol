@@ -112,6 +112,12 @@ export async function loadAccount(
   return Buffer.from(accountInfo.data);
 }
 
+export enum AccountStatus {
+  SwapInfo = 1,
+  DexMarketInfo = 2,
+  Closed = 3,
+}
+
 export const DexMarketInfoLayout = BufferLayout.struct([
   BufferLayout.u8("isInitialized"),
   BufferLayout.u8("status"),
@@ -452,6 +458,18 @@ export class OneSolProtocol {
       filters: [
         {
           dataSize: SwapInfoLayout.span,
+        },
+        {
+          memcmp: {
+            offset: SwapInfoLayout.offsetOf('isInitialized'),
+            bytes: bs58.encode([1]),
+          }
+        },
+        {
+          memcmp: {
+            offset: SwapInfoLayout.offsetOf('status'),
+            bytes: bs58.encode([AccountStatus.SwapInfo]),
+          }
         },
         {
           memcmp: {
