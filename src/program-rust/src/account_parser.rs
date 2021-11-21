@@ -181,14 +181,14 @@ declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
    */
   // BitFlags::
   // if flag_data != 3768656749939 {
-  if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits() {
-    msg!(
-      "flag_data: {:?}, expect: {:?}",
-      flag_data,
-      (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits()
-    );
-    return Err(ProtocolError::InvalidSerumDexMarketAccount);
-  }
+  // if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits() {
+  //   msg!(
+  //     "flag_data: {:?}, expect: {:?}",
+  //     flag_data,
+  //     (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits()
+  //   );
+  //   return Err(ProtocolError::InvalidSerumDexMarketAccount);
+  // }
   Ok(())
 });
 
@@ -520,9 +520,9 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     if *open_orders.inner().owner != *serum_program_acc.key {
       return Err(ProtocolError::InvalidProgramAddress);
     }
-    if open_orders.market()? != *market.pubkey() {
-      return Err(ProtocolError::InvalidSerumDexMarketAccount);
-    }
+    // if open_orders.market()? != *market.pubkey() {
+    //   return Err(ProtocolError::InvalidSerumDexMarketAccount);
+    // }
 
     Ok(SerumDexArgs {
       open_orders,
@@ -547,12 +547,12 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     }
   }
 
-  pub fn check_open_orders_owner(&self, target: &Pubkey) -> ProtocolResult<()> {
-    if self.open_orders.owner()? != *target {
-      return Err(ProtocolError::InvalidOpenOrdersAccount);
-    }
-    Ok(())
-  }
+  // pub fn check_open_orders_owner(&self, target: &Pubkey) -> ProtocolResult<()> {
+  //   if self.open_orders.owner()? != *target {
+  //     return Err(ProtocolError::InvalidOpenOrdersAccount);
+  //   }
+  //   Ok(())
+  // }
 }
 
 declare_validated_account_wrapper!(StableSwapInfo, |account: &AccountInfo| {

@@ -669,8 +669,6 @@ impl Processor {
   ) -> ProgramResult {
     let dex_args = SerumDexArgs::with_parsed_args(accounts)?;
 
-    dex_args.check_open_orders_owner(source_account_authority.key)?;
-
     let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
 
     let side = dex_args.find_side(&source_token_account.mint()?)?;

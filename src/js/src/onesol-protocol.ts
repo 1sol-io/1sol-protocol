@@ -1494,7 +1494,7 @@ export class OneSolProtocol {
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: swapInfo, isSigner: true, isWritable: true },
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
     const swapKeys = raydiumInfo.toKeys();
@@ -1599,7 +1599,7 @@ export class OneSolProtocol {
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: swapInfo, isSigner: true, isWritable: true },
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
       { pubkey: feeTokenAccount, isSigner: false, isWritable: true }
     ];
@@ -1800,7 +1800,7 @@ export class OneSolProtocol {
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: swapInfo, isSigner: true, isWritable: true },
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
     ];
     const swapKeys = dexMarketInfo.toKeys();
@@ -1905,7 +1905,7 @@ export class OneSolProtocol {
       { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
       { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
       { pubkey: transferAuthority, isSigner: true, isWritable: false },
-      { pubkey: swapInfo, isSigner: true, isWritable: true },
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
       { pubkey: tokenProgramId, isSigner: false, isWritable: false },
       { pubkey: feeTokenAccount, isSigner: false, isWritable: true }
     ];
@@ -1984,7 +1984,7 @@ export async function loadSerumDexMarket(
   programId: PublicKey,
   openOrders: PublicKey,
 ): Promise<SerumDexMarketInfo> {
-  const decoded = Market.getLayout(programId).decoded(await loadAccount(connection, pubkey, programId));
+  const decoded = Market.getLayout(programId).decode(await loadAccount(connection, pubkey, programId));
 
   const requestQueue = new PublicKey(decoded.requestQueue);
   const eventQueue = new PublicKey(decoded.eventQueue);
