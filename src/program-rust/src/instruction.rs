@@ -103,7 +103,6 @@ pub struct SwapOutInstruction {
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum OneSolInstruction {
-
   /// Swap the tokens in the pool.
   ///
   ///   user accounts

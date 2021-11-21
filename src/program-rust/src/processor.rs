@@ -4,14 +4,14 @@ use crate::constraints::OWNER_KEY;
 use crate::state::Status;
 use crate::{
   account_parser::{
-    RaydiumSwapArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs,
-    StableSwapArgs, SwapInfoArgs, TokenAccount, UserArgs,
+    RaydiumSwapArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs, StableSwapArgs, SwapInfoArgs,
+    TokenAccount, UserArgs,
   },
   error::ProtocolError,
   instruction::{
     ExchangerType, OneSolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
   },
-  state::{SwapInfo},
+  state::SwapInfo,
   swappers::{raydium_swap, serum_dex_order, spl_token_swap},
 };
 use arrayref::array_refs;
@@ -28,7 +28,7 @@ use solana_program::{
   program_pack::Pack,
   pubkey::Pubkey,
   rent::Rent,
-  sysvar::{Sysvar},
+  sysvar::Sysvar,
 };
 // use std::convert::identity;
 /// Program state handler.
