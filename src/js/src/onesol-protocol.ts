@@ -243,6 +243,8 @@ export class TokenSwapInfo {
 //
 export class SerumDexMarketInfo {
   constructor(
+    private dexMarketInfo: PublicKey,
+    private authority: PublicKey,
     private market: PublicKey,
     private requestQueue: PublicKey,
     private eventQueue: PublicKey,
@@ -254,6 +256,8 @@ export class SerumDexMarketInfo {
     private openOrders: PublicKey,
     private programId: PublicKey
   ) {
+    this.dexMarketInfo = dexMarketInfo;
+    this.authority = authority;
     this.market = market;
     this.requestQueue = requestQueue;
     this.eventQueue = eventQueue;
@@ -268,6 +272,9 @@ export class SerumDexMarketInfo {
 
   toKeys(): Array<AccountMeta> {
     const keys = [
+      { pubkey: this.dexMarketInfo, isSigner: false, isWritable: true },
+      { pubkey: this.authority, isSigner: false, isWritable: false },
+      { pubkey: this.openOrders, isSigner: false, isWritable: true },
       { pubkey: this.market, isSigner: false, isWritable: true },
       {
         pubkey: this.requestQueue,
@@ -292,7 +299,6 @@ export class SerumDexMarketInfo {
         isWritable: true,
       },
       { pubkey: this.vaultSigner, isSigner: false, isWritable: false },
-      { pubkey: this.openOrders, isSigner: false, isWritable: true },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: this.programId, isSigner: false, isWritable: false },
     ];
@@ -447,6 +453,13 @@ export class OneSolProtocol {
     programId?: PublicKey;
   }): Promise<OneSolProtocol> {
     return new OneSolProtocol(connection, programId, TOKEN_PROGRAM_ID, wallet);
+  }
+
+  static async createOnesolAuthority(programId: PublicKey) {
+    return await PublicKey.findProgramAddress(
+      [Uint8Array.from([49, 97, 50, 98, 51, 99, 52, 100, 111, 110, 101, 115, 111, 108, 95, 97, 117, 116, 104, 111, 114, 105, 116, 121, 119, 54, 120, 55, 121, 56, 122, 57])],
+      programId
+    )
   }
 
   async findSwapInfo({
@@ -1893,9 +1906,13 @@ export async function loadSerumDexMarket(
     programId
   );
 
+  const [authority, _] = await OneSolProtocol.createOnesolAuthority(extProgramId)
+
   const openOrders = new PublicKey(extMarketDecoded.openOrders);
 
   return new SerumDexMarketInfo(
+    extPubkey,
+    authority,
     pubkey,
     requestQueue,
     eventQueue,

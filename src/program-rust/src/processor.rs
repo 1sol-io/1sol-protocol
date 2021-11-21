@@ -1,7 +1,6 @@
 //! Program state processor
 
-use crate::constraints::OWNER_KEY;
-use crate::instruction::UpdateDexMarketOpenOrders;
+use crate::constraints::{OWNER_KEY, BASE_SEED};
 use crate::state::Status;
 use crate::{
   account_parser::{
@@ -14,7 +13,7 @@ use crate::{
     ExchangerType, Initialize, OneSolInstruction, SwapInInstruction, SwapInstruction,
     SwapOutInstruction,
   },
-  state::{DexMarketInfo, SwapInfo},
+  state::{DexMarketInfo, SwapInfo, Status as AccountStatus},
   swappers::{raydium_swap, serum_dex_order, spl_token_swap},
 };
 use arrayref::{array_refs};
@@ -46,8 +45,8 @@ impl Processor {
         msg!("Instruction: Initialize Dex Market Open Orders");
         Self::process_initialize_dex_mark_open_orders(program_id, &data, accounts)
       }
-      OneSolInstruction::UpdateDexMarketOpenOrders(data) => {
-        Self::process_update_dex_mark_open_orders(program_id, &data, accounts)
+      OneSolInstruction::UpdateDexMarketOpenOrders => {
+        Self::process_update_dex_mark_open_orders(program_id, accounts)
       }
       OneSolInstruction::SwapSplTokenSwap(data) => {
         msg!("Instruction: Swap TokenSwap");
@@ -139,7 +138,7 @@ impl Processor {
     validate_authority_pubkey(
       authority_info.key,
       program_id,
-      &data.base_seed,
+      &BASE_SEED,
       data.nonce,
     )?;
 
@@ -159,17 +158,12 @@ impl Processor {
       return Err(ProtocolError::InvalidRentAccount.into());
     }
 
-    let is_initialized = match DexMarketInfo::unpack(&dex_market_info_acc.try_borrow_data()?) {
-      Ok(dex_market_info) => dex_market_info.is_initialized(),
-      Err(_) => false,
-    };
-
-    if is_initialized {
+    if dex_market_info_acc.data.borrow()[0] == 1 {
       return Err(ProtocolError::InvalidAccountFlags.into());
     }
 
     serum_dex_order::invoke_init_open_orders(
-      &data.base_seed,
+      &BASE_SEED,
       &dex_program_id,
       open_orders_info,
       authority_info,
@@ -180,7 +174,7 @@ impl Processor {
 
     let obj = DexMarketInfo {
       is_initialized: 1,
-      status: 1,
+      status: AccountStatus::DexMarketInfo.to_u8(),
       nonce: data.nonce,
       dex_program_id: dex_program_id,
       market: *market_acc_info.key,
@@ -195,7 +189,6 @@ impl Processor {
   /// process update DexMarketInfo OpenOrders
   pub fn process_update_dex_mark_open_orders(
     program_id: &Pubkey,
-    data: &UpdateDexMarketOpenOrders,
     accounts: &[AccountInfo],
   ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
@@ -220,9 +213,10 @@ impl Processor {
         msg!("DexMarketInfo::unpack err: {}", e);
         ProtocolError::InvalidDexMarketInfoAccount
       })?;
-    if !protocol_market_info.is_initialized() || protocol_market_info.status != 1 {
-      return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
-    }
+    // TODO remove
+    // if !protocol_market_info.is_initialized() || protocol_market_info.status != AccountStatus::DexMarketInfo.to_u8() {
+    //   return Err(ProtocolError::InvalidDexMarketInfoAccount.into());
+    // }
 
     if protocol_market_info.market != *dex_market_acc_info.key {
       msg!("protocol_market_info.market != dex_market_acc_info.key");
@@ -234,7 +228,7 @@ impl Processor {
     }
 
     serum_dex_order::invoke_init_open_orders(
-      &data.base_seed,
+      &BASE_SEED,
       &dex_program_id,
       dex_open_orders_info,
       authority_info,
@@ -245,6 +239,8 @@ impl Processor {
 
     let mut obj = protocol_market_info;
     obj.open_orders = *dex_open_orders_info.key;
+    // TODO remove
+    obj.status = AccountStatus::DexMarketInfo.to_u8();
 
     DexMarketInfo::pack(obj, &mut protocol_market_info_acc.data.borrow_mut())?;
     Ok(())

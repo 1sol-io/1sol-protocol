@@ -496,7 +496,7 @@ impl<'a, 'b: 'a> SerumDexArgs<'a, 'b> {
     program_id: &Pubkey,
   ) -> ProtocolResult<Self> {
     const MIN_ACCOUNTS: usize = 13;
-    if !(accounts.len() == MIN_ACCOUNTS) {
+    if accounts.len() != MIN_ACCOUNTS {
       return Err(ProtocolError::InvalidAccountsLength);
     }
     let &[

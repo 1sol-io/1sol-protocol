@@ -55,13 +55,6 @@ impl ExchangerType {
 pub struct Initialize {
   /// nonce used to create validate program address
   pub nonce: u8,
-  pub base_seed: [u8; 32],
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct UpdateDexMarketOpenOrders {
-  /// nonce used to create validate program address
-  pub base_seed: [u8; 32],
 }
 
 /// Swap instruction data
@@ -128,7 +121,7 @@ pub enum OneSolInstruction {
   /// 3. `[writable]` open_orders account. SerumDexOpenOrders account.
   /// 4. `[]` the rend sysvar.
   /// 5. `[]` SerumDex ProgramId.
-  UpdateDexMarketOpenOrders(UpdateDexMarketOpenOrders),
+  UpdateDexMarketOpenOrders,
 
   /// Swap the tokens in the pool.
   ///
@@ -156,7 +149,7 @@ pub enum OneSolInstruction {
   ///     3. '[]` Token program id
   ///     4. `[writable]` fee token account
   ///     5. `[writable]` dex-market-info account
-  ///     6. `[writable]` dex-market-info authority
+  ///     6. `[]` dex-market-info authority
   ///     7. `[writable]`  dex-market-info open_orders
   ///     8. `[writable]`  serum-dex market
   ///     9. `[writable]`  serum-dex request_queue
@@ -390,7 +383,7 @@ impl OneSolInstruction {
       4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
       5 => return Err(ProtocolError::InvalidInstruction.into()),
       6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
-      7 => Self::UpdateDexMarketOpenOrders(UpdateDexMarketOpenOrders::unpack(rest)?),
+      7 => Self::UpdateDexMarketOpenOrders,
       8 => return Err(ProtocolError::InvalidInstruction.into()),
       9 => Self::SwapRaydiumSwap(SwapInstruction::unpack(rest)?),
       10 => Self::InitializeSwapInfo,
@@ -409,27 +402,14 @@ impl OneSolInstruction {
 }
 
 impl Initialize {
-  const DATA_LEN: usize = 33;
+  const DATA_LEN: usize = 1;
 
   fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
     if input.len() < Initialize::DATA_LEN {
       return Err(ProtocolError::InvalidInput.into());
     }
-    let arr_data = array_ref![input, 0, Initialize::DATA_LEN];
-    let (&[nonce], &base_seed) = array_refs![arr_data, 1, 32];
-    Ok(Self { nonce, base_seed })
-  }
-}
-
-impl UpdateDexMarketOpenOrders {
-  const DATA_LEN: usize = 32;
-
-  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    if input.len() < UpdateDexMarketOpenOrders::DATA_LEN {
-      return Err(ProtocolError::InvalidInput.into());
-    }
-    let &base_seed = array_ref![input, 0, UpdateDexMarketOpenOrders::DATA_LEN];
-    Ok(Self { base_seed })
+    let &[nonce] = array_ref![input, 0, Initialize::DATA_LEN];
+    Ok(Self { nonce })
   }
 }
 
