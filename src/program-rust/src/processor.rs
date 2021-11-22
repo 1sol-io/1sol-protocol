@@ -826,7 +826,7 @@ impl Processor {
       source_account_authority.clone(),
     ];
 
-    let instruction = raydium_swap::swap_base_in(
+    let instruction = raydium_swap::swap(
       swap_args.program_id.key,
       swap_args.amm_info.pubkey(),
       swap_args.authority.key,
