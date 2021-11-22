@@ -1636,6 +1636,99 @@ export class OneSolProtocol {
     });
   }
 
+
+  async createSwapInByRaydiumSwap2Instruction(
+    {
+      fromTokenAccountKey,
+      toTokenAccountKey,
+      fromMintKey,
+      toMintKey,
+      userTransferAuthority,
+      swapInfo,
+      amountIn,
+      raydiumInfo,
+    }: {
+      fromTokenAccountKey: PublicKey;
+      toTokenAccountKey: PublicKey;
+      fromMintKey: PublicKey;
+      toMintKey: PublicKey;
+      userTransferAuthority: PublicKey;
+      swapInfo: PublicKey;
+      amountIn: Numberu64;
+      raydiumInfo: RaydiumAmmInfo;
+    },
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>
+  ): Promise<void> {
+    instructions.push(
+      await OneSolProtocol.makeSwapInByRaydiumSwap2Instruction({
+        sourceTokenKey: fromTokenAccountKey,
+        sourceMint: fromMintKey,
+        destinationTokenKey: toTokenAccountKey,
+        destinationMint: toMintKey,
+        transferAuthority: userTransferAuthority,
+        tokenProgramId: this.tokenProgramId,
+        swapInfo: swapInfo,
+        raydiumInfo: raydiumInfo,
+        amountIn: amountIn,
+        programId: this.programId,
+      })
+    );
+  }
+
+  static async makeSwapInByRaydiumSwap2Instruction({
+    sourceTokenKey,
+    sourceMint,
+    destinationTokenKey,
+    destinationMint,
+    transferAuthority,
+    swapInfo,
+    tokenProgramId,
+    raydiumInfo,
+    amountIn,
+    programId = ONESOL_PROTOCOL_PROGRAM_ID,
+  }: {
+    sourceTokenKey: PublicKey;
+    sourceMint: PublicKey;
+    destinationTokenKey: PublicKey;
+    destinationMint: PublicKey;
+    transferAuthority: PublicKey;
+    tokenProgramId: PublicKey;
+    swapInfo: PublicKey;
+    raydiumInfo: RaydiumAmmInfo;
+    amountIn: Numberu64;
+    programId?: PublicKey,
+  }): Promise<TransactionInstruction> {
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+      uint64("amountIn"),
+    ]);
+
+    let dataMap: any = {
+      instruction: 20, // Swap instruction
+      amountIn: amountIn.toBuffer(),
+    };
+
+    const keys = [
+      { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
+      { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
+      { pubkey: transferAuthority, isSigner: true, isWritable: false },
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
+      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
+    ];
+    const swapKeys = raydiumInfo.toKeys2();
+    keys.push(...swapKeys);
+
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(dataMap, data);
+
+    return new TransactionInstruction({
+      keys,
+      programId: programId,
+      data,
+    });
+  }
+
   async createSwapOutByRaydiumSwap2Instruction(
     {
       fromTokenAccountKey,
@@ -1714,7 +1807,7 @@ export class OneSolProtocol {
     ]);
 
     let dataMap: any = {
-      instruction: 20, // Swap instruction
+      instruction: 21, // Swap instruction
       minimumAmountOut: minimumAmountOut.toBuffer(),
     };
 

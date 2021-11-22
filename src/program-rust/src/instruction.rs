@@ -16,6 +16,8 @@ pub enum ExchangerType {
   StableSwap,
   /// Raydium swap
   RaydiumSwap,
+  /// Raydium swap slim
+  RaydiumSwapSlim,
 }
 
 impl ExchangerType {
@@ -25,6 +27,7 @@ impl ExchangerType {
       1 => Some(ExchangerType::SerumDex),
       2 => Some(ExchangerType::StableSwap),
       3 => Some(ExchangerType::RaydiumSwap),
+      4 => Some(ExchangerType::RaydiumSwapSlim),
       _ => None,
     }
   }
@@ -359,6 +362,8 @@ pub enum OneSolInstruction {
   ///     20. `[]` raydium program id.
   SwapRaydiumOut(SwapOutInstruction),
 
+  SwapRaydiumIn2(SwapInInstruction),
+
   /// Swap tokens through Raydium-Swap
   ///
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
@@ -383,6 +388,8 @@ pub enum OneSolInstruction {
   ///     10. `[]` raydium vault_signer account.
   ///     20. `[]` raydium program id.
   SwapRaydiumOut2(SwapOutSlimInstruction),
+
+
 }
 
 impl OneSolInstruction {
@@ -406,7 +413,8 @@ impl OneSolInstruction {
       17 => Self::SwapStableSwapOut(SwapOutInstruction::unpack(rest)?),
       18 => Self::SwapRaydiumIn(SwapInInstruction::unpack(rest)?),
       19 => Self::SwapRaydiumOut(SwapOutInstruction::unpack(rest)?),
-      20 => Self::SwapRaydiumOut2(SwapOutSlimInstruction::unpack(rest)?),
+      20 => Self::SwapRaydiumIn2(SwapInInstruction::unpack(rest)?),
+      21 => Self::SwapRaydiumOut2(SwapOutSlimInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }
