@@ -1,6 +1,8 @@
 //! Program state processor
 
+use crate::account_parser::RaydiumSwapArgs2;
 use crate::constraints::OWNER_KEY;
+use crate::instruction::SwapOutSlimInstruction;
 use crate::state::Status;
 use crate::{
   account_parser::{
@@ -94,6 +96,9 @@ impl Processor {
       OneSolInstruction::SwapRaydiumOut(data) => {
         msg!("Instruction: Swap SplTokenSwap Out");
         Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::RaydiumSwap)
+      }
+      OneSolInstruction::SwapRaydiumOut2(data) => {
+        Self::process_single_step_swap_out_slim(program_id, &data, accounts, ExchangerType::RaydiumSwap)
       }
     }
   }
@@ -572,6 +577,173 @@ impl Processor {
     Ok(())
   }
 
+  pub fn process_single_step_swap_out_slim(
+    program_id: &Pubkey,
+    data: &SwapOutSlimInstruction,
+    accounts: &[AccountInfo],
+    exchanger: ExchangerType,
+  ) -> ProgramResult {
+    if accounts.len() < 6 {
+      return Err(ProtocolError::InvalidAccountsLength.into());
+    }
+    let (fixed_accounts, other_accounts) = array_refs![accounts, 6; ..;];
+
+    let (
+      user_accounts,
+      &[ref swap_info_account, ref spl_token_program_acc, ref fee_token_account_acc],
+    ) = array_refs![fixed_accounts, 3, 3];
+
+    let user_args = UserArgs::with_parsed_args(user_accounts)?;
+    let swap_info_args = SwapInfoArgs::with_parsed_args(swap_info_account, program_id)?;
+    let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
+
+    if !user_args.source_account_owner.is_signer {
+      return Err(ProtocolError::InvalidSignerAccount.into());
+    }
+    user_args
+      .token_source_account
+      .check_owner(user_args.source_account_owner.key, false)?;
+
+    if !swap_info_args.swap_info_acc.is_writable {
+      return Err(ProtocolError::ReadonlyAccount.into());
+    }
+    match swap_info_args.swap_info.token_account {
+      COption::Some(k) => {
+        if k != *user_args.token_source_account.pubkey() {
+          return Err(ProtocolError::InvalidTokenAccount.into());
+        }
+      }
+      COption::None => {
+        return Err(ProtocolError::InvalidTokenAccount.into());
+      }
+    };
+
+    msg!(
+      "source_token_account amount: {}",
+      user_args.token_source_account.balance()?,
+    );
+
+    let fee_token_account = TokenAccount::new(fee_token_account_acc)?;
+    if fee_token_account.mint()? != user_args.token_destination_account.mint()? {
+      return Err(ProtocolError::InvalidFeeTokenAccount.into());
+    }
+    if fee_token_account.owner()?.to_string() != OWNER_KEY.to_string() {
+      return Err(ProtocolError::InvalidFeeTokenAccount.into());
+    }
+
+    match fee_token_account.delegate()? {
+      Some(delegate) => {
+        if delegate == *user_args.source_account_owner.key {
+          return Err(ProtocolError::InvalidFeeTokenAccount.into());
+        }
+      }
+      None => {}
+    }
+    let from_amount_before = user_args.token_source_account.balance()?;
+    let to_amount_before = user_args.token_destination_account.balance()?;
+
+    let amount_in = swap_info_args.swap_info.token_latest_amount;
+    let amount_out = data.minimum_amount_out.get();
+    msg!(
+      "from_amount_before: {}, to_amount_before: {}, amount_in: {}, minimum_amount_out: {}",
+      from_amount_before,
+      to_amount_before,
+      amount_in,
+      data.minimum_amount_out,
+    );
+
+    match exchanger {
+      ExchangerType::SplTokenSwap => Self::process_step_tokenswap(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::StableSwap => Self::process_step_stableswap(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::RaydiumSwap => Self::process_step_raydium2(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::SerumDex => Self::process_step_serumdex(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+    }?;
+
+    let from_amount_after = user_args.token_source_account.balance()?;
+    let to_amount_after = user_args.token_destination_account.balance()?;
+    msg!(
+      "from_amount_after: {}, to_amount_after: {}",
+      from_amount_after,
+      to_amount_after
+    );
+
+    let from_amount_changed = from_amount_before.checked_sub(from_amount_after).unwrap();
+    let to_amount_include_fee = to_amount_after.checked_sub(to_amount_before).unwrap();
+    msg!("from_amount changed: {}", from_amount_changed);
+    msg!(
+      "result_with_fee: {}, minimum: {}",
+      to_amount_include_fee,
+      data.minimum_amount_out,
+    );
+    if to_amount_include_fee == 0 {
+      return Err(ProtocolError::DexSwapError.into());
+    }
+
+    if to_amount_include_fee < data.minimum_amount_out.get() {
+      return Err(ProtocolError::ExceededSlippage.into());
+    }
+
+    let fee = to_amount_include_fee
+      .checked_sub(data.minimum_amount_out.get())
+      .map(|v| (v as u128).checked_mul(25).unwrap().checked_div(100).unwrap_or(0) as u64)
+      .unwrap_or(0);
+
+    if fee > 0 {
+      Self::token_transfer(
+        spl_token_program.inner(),
+        user_args.token_destination_account.inner(),
+        fee_token_account.inner(),
+        user_args.source_account_owner,
+        fee,
+      )?;
+    }
+    let mut swap_info = swap_info_args.swap_info;
+    swap_info.token_latest_amount = to_amount_include_fee;
+    swap_info.token_account = COption::None;
+
+    SwapInfo::pack(
+      swap_info,
+      &mut swap_info_args.swap_info_acc.data.borrow_mut(),
+    )?;
+    Ok(())
+  }
+
   /// Step swap in spl-token-swap
   #[allow(clippy::too_many_arguments, unused_variables)]
   fn process_step_tokenswap<'a, 'b: 'a>(
@@ -853,6 +1025,78 @@ impl Processor {
     invoke(&instruction, &swap_accounts)?;
     Ok(())
   }
+
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments, unused_variables)]
+  fn process_step_raydium2<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    amount_in: u64,
+    minimum_amount_out: u64,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    source_account_authority: &'a AccountInfo<'b>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    let swap_args = RaydiumSwapArgs2::with_parsed_args(accounts)?;
+    let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
+
+    msg!(
+      "swap using raydium, amount_in: {}, minimum_amount_out: {}",
+      amount_in,
+      minimum_amount_out,
+    );
+
+    let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+
+    let swap_accounts = vec![
+      swap_args.program_id.clone(),
+      spl_token_program.inner().clone(),
+      swap_args.amm_info.inner().clone(),
+      swap_args.authority.clone(),
+      swap_args.open_orders.inner().clone(),
+      swap_args.pool_token_coin.inner().clone(),
+      swap_args.pool_token_pc.inner().clone(),
+      swap_args.serum_dex_program_id.clone(),
+      swap_args.serum_market.inner().clone(),
+      swap_args.bids.clone(),
+      swap_args.asks.clone(),
+      swap_args.event_q.clone(),
+      swap_args.coin_vault.inner().clone(),
+      swap_args.pc_vault.inner().clone(),
+      swap_args.vault_signer.clone(),
+      source_token_account.inner().clone(),
+      destination_token_account.inner().clone(),
+      source_account_authority.clone(),
+    ];
+
+    let instruction = raydium_swap::swap_base_in(
+      swap_args.program_id.key,
+      swap_args.amm_info.pubkey(),
+      swap_args.authority.key,
+      swap_args.open_orders.pubkey(),
+      swap_args.pool_token_coin.pubkey(),
+      swap_args.pool_token_pc.pubkey(),
+      swap_args.serum_dex_program_id.key,
+      swap_args.serum_market.pubkey(),
+      swap_args.bids.key,
+      swap_args.asks.key,
+      swap_args.event_q.key,
+      swap_args.coin_vault.pubkey(),
+      swap_args.pc_vault.pubkey(),
+      swap_args.vault_signer.key,
+      source_token_account.pubkey(),
+      destination_token_account.pubkey(),
+      source_account_authority.key,
+      amount_in,
+    )?;
+
+    msg!("invoke raydium swap_base_in");
+    invoke(&instruction, &swap_accounts)?;
+    Ok(())
+  }
+
 
   fn get_amount_in(amount_in: u64, source_token_balance: u64) -> u64 {
     if source_token_balance < amount_in {

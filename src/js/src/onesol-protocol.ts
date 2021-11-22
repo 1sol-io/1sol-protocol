@@ -389,6 +389,26 @@ export class RaydiumAmmInfo {
     ];
     return keys;
   }
+
+  toKeys2(): Array<AccountMeta> {
+    const keys = [
+      { pubkey: this.ammInfo, isSigner: false, isWritable: true },
+      { pubkey: this.authority, isSigner: false, isWritable: false },
+      { pubkey: this.ammOpenOrders, isSigner: false, isWritable: true },
+      { pubkey: this.poolCoinTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: this.poolPcTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: this.serumProgramId, isSigner: false, isWritable: false },
+      { pubkey: this.serumMarket, isSigner: false, isWritable: true },
+      { pubkey: this.serumBids, isSigner: false, isWritable: true },
+      { pubkey: this.serumAsks, isSigner: false, isWritable: true },
+      { pubkey: this.serumEventQueue, isSigner: false, isWritable: true },
+      { pubkey: this.serumCoinVaultAccount, isSigner: false, isWritable: true },
+      { pubkey: this.serumPcVaultAccount, isSigner: false, isWritable: true },
+      { pubkey: this.serumVaultSigner, isSigner: false, isWritable: false },
+      { pubkey: this.programId, isSigner: false, isWritable: false },
+    ];
+    return keys;
+  }
 }
 
 /**
@@ -1616,6 +1636,108 @@ export class OneSolProtocol {
     });
   }
 
+  async createSwapOutByRaydiumSwap2Instruction(
+    {
+      fromTokenAccountKey,
+      toTokenAccountKey,
+      fromMintKey,
+      toMintKey,
+      userTransferAuthority,
+      feeTokenAccount,
+      swapInfo,
+      expectAmountOut,
+      minimumAmountOut,
+      raydiumInfo,
+    }: {
+      fromTokenAccountKey: PublicKey;
+      toTokenAccountKey: PublicKey;
+      fromMintKey: PublicKey;
+      toMintKey: PublicKey;
+      userTransferAuthority: PublicKey;
+      feeTokenAccount: PublicKey;
+      swapInfo: PublicKey;
+      expectAmountOut: Numberu64;
+      minimumAmountOut: Numberu64;
+      raydiumInfo: RaydiumAmmInfo;
+    },
+    instructions: Array<TransactionInstruction>,
+    signers: Array<Signer>
+  ): Promise<void> {
+    instructions.push(
+      await OneSolProtocol.makeSwapOutByRaydiumSwap2Instruction({
+        sourceTokenKey: fromTokenAccountKey,
+        sourceMint: fromMintKey,
+        destinationTokenKey: toTokenAccountKey,
+        destinationMint: toMintKey,
+        transferAuthority: userTransferAuthority,
+        tokenProgramId: this.tokenProgramId,
+        feeTokenAccount: feeTokenAccount,
+        swapInfo: swapInfo,
+        raydiumInfo: raydiumInfo,
+        expectAmountOut: expectAmountOut,
+        minimumAmountOut: minimumAmountOut,
+        programId: this.programId,
+      })
+    );
+  }
+
+  static async makeSwapOutByRaydiumSwap2Instruction({
+    sourceTokenKey,
+    sourceMint,
+    destinationTokenKey,
+    destinationMint,
+    transferAuthority,
+    tokenProgramId,
+    feeTokenAccount,
+    swapInfo,
+    raydiumInfo,
+    expectAmountOut,
+    minimumAmountOut,
+    programId = ONESOL_PROTOCOL_PROGRAM_ID,
+  }: {
+    sourceTokenKey: PublicKey;
+    sourceMint: PublicKey;
+    destinationTokenKey: PublicKey;
+    destinationMint: PublicKey;
+    transferAuthority: PublicKey;
+    tokenProgramId: PublicKey;
+    feeTokenAccount: PublicKey;
+    swapInfo: PublicKey;
+    raydiumInfo: RaydiumAmmInfo;
+    expectAmountOut: Numberu64;
+    minimumAmountOut: Numberu64;
+    programId?: PublicKey,
+  }): Promise<TransactionInstruction> {
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+      uint64("minimumAmountOut"),
+    ]);
+
+    let dataMap: any = {
+      instruction: 20, // Swap instruction
+      minimumAmountOut: minimumAmountOut.toBuffer(),
+    };
+
+    const keys = [
+      { pubkey: sourceTokenKey, isSigner: false, isWritable: true },
+      { pubkey: destinationTokenKey, isSigner: false, isWritable: true },
+      { pubkey: transferAuthority, isSigner: true, isWritable: false },
+      { pubkey: swapInfo, isSigner: false, isWritable: true },
+      { pubkey: tokenProgramId, isSigner: false, isWritable: false },
+      { pubkey: feeTokenAccount, isSigner: false, isWritable: true }
+    ];
+    const swapKeys = raydiumInfo.toKeys2();
+    keys.push(...swapKeys);
+
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(dataMap, data);
+
+    return new TransactionInstruction({
+      keys,
+      programId: programId,
+      data,
+    });
+  }
 
   async createSwapBySerumDexInstruction(
     {

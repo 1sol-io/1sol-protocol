@@ -84,6 +84,13 @@ pub struct SwapOutInstruction {
   pub minimum_amount_out: NonZeroU64,
 }
 
+/// Swap instruction data
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwapOutSlimInstruction {
+  /// Minimum amount of DESTINATION token to output, prevents excessive slippage
+  pub minimum_amount_out: NonZeroU64,
+}
+
 // /// Swap from multiple exchanger
 // #[derive(Clone, Debug, PartialEq, Copy)]
 // pub struct SwapTwoStepsInstruction {
@@ -351,6 +358,31 @@ pub enum OneSolInstruction {
   ///     10. `[]` raydium vault_signer account.
   ///     20. `[]` raydium program id.
   SwapRaydiumOut(SwapOutInstruction),
+
+  /// Swap tokens through Raydium-Swap
+  ///
+  ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///     3. '[writable]` SwapInfo account
+  ///     4. '[]` Token program id.
+  ///     5. `[writable]` fee token account.
+  ///     6. `[writable]` raydium amm account.
+  ///     7. `[]` raydium $authority.
+  ///     8. `[writable]` raydium open_orders account.
+  ///     9. `[writable]` raydium target_orders account.
+  ///     10. `[writable]` raydium pool_token_coin account.
+  ///     11. `[writable]` raydium pool_token_pc account.
+  ///     12. `[]` serum-dex program id.
+  ///     13. `[writable]` raydium serum_market account.
+  ///     14. `[writable]` raydium bids account.
+  ///     15. `[writable]` raydium asks account.
+  ///     16. `[writable]` raydium event_q account.
+  ///     17. `[writable]` raydium coin_vault account.
+  ///     18. `[writable]` raydium pc_vault account.
+  ///     10. `[]` raydium vault_signer account.
+  ///     20. `[]` raydium program id.
+  SwapRaydiumOut2(SwapOutSlimInstruction),
 }
 
 impl OneSolInstruction {
@@ -374,6 +406,7 @@ impl OneSolInstruction {
       17 => Self::SwapStableSwapOut(SwapOutInstruction::unpack(rest)?),
       18 => Self::SwapRaydiumIn(SwapInInstruction::unpack(rest)?),
       19 => Self::SwapRaydiumOut(SwapOutInstruction::unpack(rest)?),
+      20 => Self::SwapRaydiumOut2(SwapOutSlimInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }
@@ -444,6 +477,22 @@ impl SwapOutInstruction {
     }
     Ok(Self {
       expect_amount_out,
+      minimum_amount_out,
+    })
+  }
+}
+
+impl SwapOutSlimInstruction {
+  const DATA_LEN: usize = 8;
+
+  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
+    if input.len() < SwapOutSlimInstruction::DATA_LEN {
+      return Err(ProtocolError::InvalidInput.into());
+    }
+    let &minimum_amount_out_arr = array_ref![input, 0, SwapOutSlimInstruction::DATA_LEN];
+    let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
+      .ok_or(ProtocolError::InvalidInput)?;
+    Ok(Self {
       minimum_amount_out,
     })
   }

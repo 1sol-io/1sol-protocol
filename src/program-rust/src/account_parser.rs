@@ -894,6 +894,114 @@ impl<'a, 'b: 'a> RaydiumSwapArgs<'a, 'b> {
   // }
 }
 
+#[derive(Copy, Clone)]
+pub struct RaydiumSwapArgs2<'a, 'b: 'a> {
+  pub amm_info: RaydiumAmmInfo<'a, 'b>,
+  pub authority: &'a AccountInfo<'b>,
+  pub open_orders: SerumDexOpenOrders<'a, 'b>,
+  pub pool_token_coin: TokenAccount<'a, 'b>,
+  pub pool_token_pc: TokenAccount<'a, 'b>,
+  pub serum_dex_program_id: &'a AccountInfo<'b>,
+  pub serum_market: SerumDexMarket<'a, 'b>,
+  pub bids: &'a AccountInfo<'b>,
+  pub asks: &'a AccountInfo<'b>,
+  pub event_q: &'a AccountInfo<'b>,
+  pub coin_vault: TokenAccount<'a, 'b>,
+  pub pc_vault: TokenAccount<'a, 'b>,
+  pub vault_signer: &'a AccountInfo<'b>,
+  pub program_id: &'a AccountInfo<'b>,
+}
+
+impl<'a, 'b: 'a> RaydiumSwapArgs2<'a, 'b> {
+  pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
+    const MIN_ACCOUNTS: usize = 14;
+    if accounts.len() != MIN_ACCOUNTS {
+      return Err(ProtocolError::InvalidAccountsLength);
+    }
+    let &[
+      ref amm_info_acc,
+      ref authority,
+      ref open_orders_acc,
+      ref pool_token_coin_acc,
+      ref pool_token_pc_acc,
+      ref serum_dex_program_id,
+      ref serum_market_acc,
+      ref bids,
+      ref asks,
+      ref event_q,
+      ref coin_vault_acc,
+      ref pc_vault_acc,
+      ref vault_signer,
+      ref program_id,
+    ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
+
+    if !amm_info_acc.is_writable {
+      return Err(ProtocolError::ReadonlyAccount);
+    }
+    let amm_info = RaydiumAmmInfo::new(amm_info_acc)?;
+
+    if amm_info.token_coin()? != *pool_token_coin_acc.key {
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
+    if amm_info.token_pc()? != *pool_token_pc_acc.key {
+      return Err(ProtocolError::InvalidTokenAccount);
+    }
+    if amm_info.open_orders()? != *open_orders_acc.key {
+      return Err(ProtocolError::InvalidRaydiumAmmInfoAccount);
+    }
+    if amm_info.market()? != *serum_market_acc.key {
+      return Err(ProtocolError::InvalidRaydiumAmmInfoAccount);
+    }
+    if !open_orders_acc.is_writable {
+      return Err(ProtocolError::ReadonlyAccount);
+    }
+    if amm_info.serum_dex()? != *serum_dex_program_id.key {
+      return Err(ProtocolError::InvalidSerumDexProgramId);
+    }
+
+    let market = SerumDexMarket::new(serum_market_acc)?;
+    if *market.inner().owner != *serum_dex_program_id.key {
+      return Err(ProtocolError::InvalidSerumDexMarketAccount);
+    }
+    if *bids.owner != *serum_dex_program_id.key {
+      return Err(ProtocolError::InvalidSerumDexMarketAccount);
+    }
+    if *asks.owner != *serum_dex_program_id.key {
+      return Err(ProtocolError::InvalidSerumDexMarketAccount);
+    }
+    if *event_q.owner != *serum_dex_program_id.key {
+      return Err(ProtocolError::InvalidSerumDexMarketAccount);
+    }
+    Ok(Self {
+      amm_info,
+      authority,
+      open_orders: SerumDexOpenOrders::new(open_orders_acc)?,
+      pool_token_coin: TokenAccount::new(pool_token_coin_acc)?,
+      pool_token_pc: TokenAccount::new(pool_token_pc_acc)?,
+      serum_dex_program_id: serum_dex_program_id,
+      serum_market: market,
+      bids: bids,
+      asks: asks,
+      event_q: event_q,
+      coin_vault: TokenAccount::new(coin_vault_acc)?,
+      pc_vault: TokenAccount::new(pc_vault_acc)?,
+      vault_signer: vault_signer,
+      program_id: program_id,
+    })
+  }
+
+  // pub fn find_token_pair(
+  //   &self,
+  //   source_token_account_mint: &Pubkey,
+  // ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
+  //   if *source_token_account_mint == self.token_a.mint()? {
+  //     Ok((&self.token_a, &self.token_b))
+  //   } else {
+  //     Ok((&self.token_b, &self.token_a))
+  //   }
+  // }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
