@@ -138,19 +138,17 @@ pub enum OneSolInstruction {
   ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
   ///     3. '[]` Token program id
   ///     4. `[writable]` fee token account
-  ///     5. `[writable]` dex-market-info account
-  ///     6. `[]` dex-market-info authority
-  ///     7. `[writable]`  dex-market-info open_orders
-  ///     8. `[writable]`  serum-dex market
-  ///     9. `[writable]`  serum-dex request_queue
-  ///     10. `[writable]`  serum-dex event_queue
-  ///     11. `[writable]`  serum-dex market_bids
-  ///     12. `[writable]`  serum-dex market_asks
-  ///     13. `[writable]`  serum-dex coin_vault
-  ///     14. `[writable]`  serum-dex pc_vault
-  ///     15. `[]`  serum-dex vault_signer for settleFunds
-  ///     16. `[]`  serum-dex rent_sysvar
-  ///     17. `[]`  serum-dex serum_dex_program_id
+  ///     5. `[writable]`  user market open_orders
+  ///     6. `[writable]`  serum-dex market
+  ///     7. `[writable]`  serum-dex request_queue
+  ///     8. `[writable]`  serum-dex event_queue
+  ///     9. `[writable]`  serum-dex market_bids
+  ///     10. `[writable]`  serum-dex market_asks
+  ///     11. `[writable]`  serum-dex coin_vault
+  ///     12. `[writable]`  serum-dex pc_vault
+  ///     13. `[]`  serum-dex vault_signer for settleFunds
+  ///     14. `[]`  serum-dex rent_sysvar
+  ///     15. `[]`  serum-dex serum_dex_program_id
   SwapSerumDex(SwapInstruction),
 
   /// Swap tokens through Saber StableSwap
@@ -225,19 +223,17 @@ pub enum OneSolInstruction {
   ///     2. `[signer]` User token SOURCE account OWNER (or Authority) account.
   ///     3. '[writable]` SwapInfo account
   ///     4. '[]` Token program id
-  ///     5. `[writable]` dex-market-info account
-  ///     6. `[writable]` dex-market-info authority
-  ///     7. `[writable]`  dex-market-info open_orders
-  ///     8. `[writable]`  serum-dex market
-  ///     9. `[writable]`  serum-dex request_queue
-  ///     10. `[writable]`  serum-dex event_queue
-  ///     11. `[writable]`  serum-dex market_bids
-  ///     12. `[writable]`  serum-dex market_asks
-  ///     13. `[writable]`  serum-dex coin_vault
-  ///     14. `[writable]`  serum-dex pc_vault
-  ///     15. `[]`  serum-dex vault_signer for settleFunds
-  ///     16. `[]`  serum-dex rent_sysvar
-  ///     17. `[]`  serum-dex serum_dex_program_id
+  ///     5. `[writable]`  user market open_orders
+  ///     6. `[writable]`  serum-dex market
+  ///     7. `[writable]`  serum-dex request_queue
+  ///     8. `[writable]`  serum-dex event_queue
+  ///     9. `[writable]`  serum-dex market_bids
+  ///     10. `[writable]`  serum-dex market_asks
+  ///     11. `[writable]`  serum-dex coin_vault
+  ///     12. `[writable]`  serum-dex pc_vault
+  ///     13. `[]`  serum-dex vault_signer for settleFunds
+  ///     14. `[]`  serum-dex rent_sysvar
+  ///     15. `[]`  serum-dex serum_dex_program_id
   SwapSerumDexIn(SwapInInstruction),
 
   /// Swap tokens through Saber StableSwap
@@ -305,19 +301,17 @@ pub enum OneSolInstruction {
   ///     3. '[writable]` SwapInfo account
   ///     4. '[]` Token program id
   ///     5. `[writable]` fee token account
-  ///     6. `[writable]` dex-market-info account
-  ///     7. `[writable]` dex-market-info authority
-  ///     8. `[writable]`  dex-market-info open_orders
-  ///     9. `[writable]`  serum-dex market
-  ///     10. `[writable]`  serum-dex request_queue
-  ///     11. `[writable]`  serum-dex event_queue
-  ///     12. `[writable]`  serum-dex market_bids
-  ///     13. `[writable]`  serum-dex market_asks
-  ///     14. `[writable]`  serum-dex coin_vault
-  ///     15. `[writable]`  serum-dex pc_vault
-  ///     16. `[]`  serum-dex vault_signer for settleFunds
-  ///     17. `[]`  serum-dex rent_sysvar
-  ///     18. `[]`  serum-dex serum_dex_program_id
+  ///     6. `[writable]`  user market open_orders
+  ///     7. `[writable]`  serum-dex market
+  ///     8. `[writable]`  serum-dex request_queue
+  ///     9. `[writable]`  serum-dex event_queue
+  ///     10. `[writable]`  serum-dex market_bids
+  ///     11. `[writable]`  serum-dex market_asks
+  ///     12. `[writable]`  serum-dex coin_vault
+  ///     13. `[writable]`  serum-dex pc_vault
+  ///     14. `[]`  serum-dex vault_signer for settleFunds
+  ///     15. `[]`  serum-dex rent_sysvar
+  ///     16. `[]`  serum-dex serum_dex_program_id
   SwapSerumDexOut(SwapOutInstruction),
 
   /// Swap tokens through Saber StableSwap
