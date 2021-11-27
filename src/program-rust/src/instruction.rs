@@ -362,6 +362,27 @@ pub enum OneSolInstruction {
   ///     20. `[]` raydium program id.
   SwapRaydiumOut(SwapOutInstruction),
 
+  /// Swap tokens through Raydium-Swap
+  ///
+  ///     0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///     1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///     2. `[signer]` User token0 SOURCE account OWNER (or Authority) account.
+  ///     3. '[writable]` SwapInfo account
+  ///     4. '[]` Token program id.
+  ///     5. `[writable]` raydium amm account.
+  ///     6. `[]` raydium $authority.
+  ///     7. `[writable]` raydium open_orders account.
+  ///     8. `[writable]` raydium pool_token_coin account.
+  ///     9. `[writable]` raydium pool_token_pc account.
+  ///     10. `[]` serum-dex program id.
+  ///     11. `[writable]` raydium serum_market account.
+  ///     12. `[writable]` raydium bids account.
+  ///     13. `[writable]` raydium asks account.
+  ///     14. `[writable]` raydium event_q account.
+  ///     15. `[writable]` raydium coin_vault account.
+  ///     16. `[writable]` raydium pc_vault account.
+  ///     17. `[]` raydium vault_signer account.
+  ///     18. `[]` raydium program id.
   SwapRaydiumIn2(SwapInInstruction),
 
   /// Swap tokens through Raydium-Swap
@@ -375,18 +396,17 @@ pub enum OneSolInstruction {
   ///     6. `[writable]` raydium amm account.
   ///     7. `[]` raydium $authority.
   ///     8. `[writable]` raydium open_orders account.
-  ///     9. `[writable]` raydium target_orders account.
-  ///     10. `[writable]` raydium pool_token_coin account.
-  ///     11. `[writable]` raydium pool_token_pc account.
-  ///     12. `[]` serum-dex program id.
-  ///     13. `[writable]` raydium serum_market account.
-  ///     14. `[writable]` raydium bids account.
-  ///     15. `[writable]` raydium asks account.
-  ///     16. `[writable]` raydium event_q account.
-  ///     17. `[writable]` raydium coin_vault account.
-  ///     18. `[writable]` raydium pc_vault account.
-  ///     10. `[]` raydium vault_signer account.
-  ///     20. `[]` raydium program id.
+  ///     9. `[writable]` raydium pool_token_coin account.
+  ///     10. `[writable]` raydium pool_token_pc account.
+  ///     11. `[]` serum-dex program id.
+  ///     12. `[writable]` raydium serum_market account.
+  ///     13. `[writable]` raydium bids account.
+  ///     14. `[writable]` raydium asks account.
+  ///     15. `[writable]` raydium event_q account.
+  ///     16. `[writable]` raydium coin_vault account.
+  ///     17. `[writable]` raydium pc_vault account.
+  ///     18. `[]` raydium vault_signer account.
+  ///     19. `[]` raydium program id.
   SwapRaydiumOut2(SwapOutSlimInstruction),
 
 
