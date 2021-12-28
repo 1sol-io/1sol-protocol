@@ -97,12 +97,18 @@ impl Processor {
         msg!("Instruction: Swap SplTokenSwap Out");
         Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::RaydiumSwap)
       }
-      OneSolInstruction::SwapRaydiumIn2(data) => {
-        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::RaydiumSwapSlim)
-      }
-      OneSolInstruction::SwapRaydiumOut2(data) => {
-        Self::process_single_step_swap_out_slim(program_id, &data, accounts, ExchangerType::RaydiumSwapSlim)
-      }
+      OneSolInstruction::SwapRaydiumIn2(data) => Self::process_single_step_swap_in(
+        program_id,
+        &data,
+        accounts,
+        ExchangerType::RaydiumSwapSlim,
+      ),
+      OneSolInstruction::SwapRaydiumOut2(data) => Self::process_single_step_swap_out_slim(
+        program_id,
+        &data,
+        accounts,
+        ExchangerType::RaydiumSwapSlim,
+      ),
     }
   }
 
@@ -764,7 +770,13 @@ impl Processor {
 
     let fee = to_amount_include_fee
       .checked_sub(data.minimum_amount_out.get())
-      .map(|v| (v as u128).checked_mul(25).unwrap().checked_div(100).unwrap_or(0) as u64)
+      .map(|v| {
+        (v as u128)
+          .checked_mul(25)
+          .unwrap()
+          .checked_div(100)
+          .unwrap_or(0) as u64
+      })
       .unwrap_or(0);
 
     if fee > 0 {
@@ -1084,10 +1096,7 @@ impl Processor {
     let swap_args = RaydiumSwapArgs2::with_parsed_args(accounts)?;
     let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
 
-    msg!(
-      "swap using raydium, amount_in: {}",
-      amount_in,
-    );
+    msg!("swap using raydium, amount_in: {}", amount_in,);
 
     let source_token_mint = source_token_account.mint()?;
     let destination_token_mint = destination_token_account.mint()?;

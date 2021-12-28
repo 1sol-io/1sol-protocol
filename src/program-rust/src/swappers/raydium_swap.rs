@@ -66,7 +66,7 @@ impl AmmInstruction {
   pub fn pack(&self) -> Result<Vec<u8>, ProgramError> {
     let mut buf = Vec::with_capacity(size_of::<Self>());
     match &*self {
-      Self::SwapSlim(SwapInstruction{
+      Self::SwapSlim(SwapInstruction {
         amount_in,
         minimum_amount_out,
       }) => {
@@ -76,7 +76,7 @@ impl AmmInstruction {
       }
       Self::Swap(SwapInstruction {
         amount_in,
-        minimum_amount_out 
+        minimum_amount_out,
       }) => {
         buf.push(9);
         buf.extend_from_slice(&amount_in.to_le_bytes());
@@ -111,7 +111,7 @@ pub fn swap_slim(
 ) -> Result<Instruction, ProgramError> {
   let data = AmmInstruction::SwapSlim(SwapInstruction {
     amount_in,
-    minimum_amount_out
+    minimum_amount_out,
   })
   .pack()?;
 

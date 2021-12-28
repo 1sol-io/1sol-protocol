@@ -14,22 +14,11 @@ So we decided to create 1Sol.
 - One-Stop Aggregation Service: Integrate all kinds of DeFi and DEX.
 - Fool-Proof Operation: Provides the average user with information on prices, slippage and costs of all DEX on the web. Users can choose for themselves the one path that best suits them to trade.
 
-## How to develop
-
-1. `yarn install`
-2. `yarn cluster:localhost`
-3. deploy your dev token-swap program
-4. deploy your dev serum-dex program
-5. deploy onesol-protocol program
-6. copy sample-dev to `.dev`
-7. modify `token-swap` `serum-dex` `onesol-protocol` program id to your id
-8. run `yarn start` to test
-
 ## Program Deployments
 
 | Program | Devnet | Mainnet Beta |
 | ------- | ------ | ------------ |
-|1solProtocol| `9Bj8zgNWT6UaNcXMgzMFrnH5Z13nQ6vFkRNxP743zZyr` | |
+|1solProtocol| `9Bj8zgNWT6UaNcXMgzMFrnH5Z13nQ6vFkRNxP743zZyr` | `1SoLTvbiicqXZ3MJmnTL2WYXKLYpuxwHpa4yYrVQaMZ` |
 
 ## TODO
 

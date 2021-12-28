@@ -402,8 +402,6 @@ pub enum OneSolInstruction {
   ///     18. `[]` raydium vault_signer account.
   ///     19. `[]` raydium program id.
   SwapRaydiumOut2(SwapOutSlimInstruction),
-
-
 }
 
 impl OneSolInstruction {
@@ -514,9 +512,7 @@ impl SwapOutSlimInstruction {
     let &minimum_amount_out_arr = array_ref![input, 0, SwapOutSlimInstruction::DATA_LEN];
     let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
       .ok_or(ProtocolError::InvalidInput)?;
-    Ok(Self {
-      minimum_amount_out,
-    })
+    Ok(Self { minimum_amount_out })
   }
 }
 
