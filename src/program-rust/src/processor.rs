@@ -3,7 +3,9 @@
 use crate::account_parser::RaydiumSwapArgs2;
 use crate::constraints::OWNER_KEY;
 use crate::instruction::SwapOutSlimInstruction;
+use crate::spl_token;
 use crate::state::Status;
+use crate::swappers::stable_swap;
 use crate::{
   account_parser::{
     RaydiumSwapArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs, StableSwapArgs, SwapInfoArgs,
@@ -14,11 +16,14 @@ use crate::{
     ExchangerType, OneSolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
   },
   state::SwapInfo,
-  swappers::{raydium_swap, serum_dex_order, spl_token_swap},
+  swappers::{
+    raydium,
+    serum_dex::{self, matching::Side as DexSide},
+    spl_token_swap,
+  },
 };
 use arrayref::array_refs;
 // use safe_transmute::to_bytes::transmute_one_to_bytes;
-use serum_dex::matching::Side as DexSide;
 use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
@@ -119,6 +124,7 @@ impl Processor {
     if accounts.len() < 2 {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (&[ref swap_info_account, ref user_account], _) = array_refs![accounts, 2;..;];
     // check onesol_market_acc_info
     if *swap_info_account.owner != *program_id {
@@ -146,6 +152,7 @@ impl Processor {
     if accounts.len() < 2 {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (&[ref swap_info_account, ref token_account_info], _) = array_refs![accounts, 2;..;];
     if *swap_info_account.owner != *program_id {
       return Err(ProtocolError::InvalidProgramAddress.into());
@@ -171,6 +178,7 @@ impl Processor {
     if accounts.len() < 5 {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (fixed_accounts, other_accounts) = array_refs![accounts, 5; ..;];
 
     let (user_accounts, &[ref spl_token_program_acc, ref fee_token_account_acc]) =
@@ -190,17 +198,14 @@ impl Processor {
     if fee_token_account.mint()? != user_args.token_destination_account.mint()? {
       return Err(ProtocolError::InvalidFeeTokenAccount.into());
     }
-    if fee_token_account.owner()?.to_string() != OWNER_KEY.to_string() {
+    if fee_token_account.owner()?.to_string() != *OWNER_KEY {
       return Err(ProtocolError::InvalidFeeTokenAccount.into());
     }
 
-    match fee_token_account.delegate()? {
-      Some(delegate) => {
-        if delegate == *user_args.source_account_owner.key {
-          return Err(ProtocolError::InvalidFeeTokenAccount.into());
-        }
+    if let Some(delegate) = fee_token_account.delegate()? {
+      if delegate == *user_args.source_account_owner.key {
+        return Err(ProtocolError::InvalidFeeTokenAccount.into());
       }
-      None => {}
     }
 
     msg!(
@@ -320,6 +325,7 @@ impl Processor {
     if accounts.len() < 5 {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (fixed_accounts, other_accounts) = array_refs![accounts, 5; ..;];
 
     let (user_accounts, &[ref swap_info_account, ref spl_token_program_acc]) =
@@ -446,6 +452,7 @@ impl Processor {
     if accounts.len() < 6 {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (fixed_accounts, other_accounts) = array_refs![accounts, 6; ..;];
 
     let (
@@ -487,17 +494,14 @@ impl Processor {
     if fee_token_account.mint()? != user_args.token_destination_account.mint()? {
       return Err(ProtocolError::InvalidFeeTokenAccount.into());
     }
-    if fee_token_account.owner()?.to_string() != OWNER_KEY.to_string() {
+    if fee_token_account.owner()?.to_string() != *OWNER_KEY {
       return Err(ProtocolError::InvalidFeeTokenAccount.into());
     }
 
-    match fee_token_account.delegate()? {
-      Some(delegate) => {
-        if delegate == *user_args.source_account_owner.key {
-          return Err(ProtocolError::InvalidFeeTokenAccount.into());
-        }
+    if let Some(delegate) = fee_token_account.delegate()? {
+      if delegate == *user_args.source_account_owner.key {
+        return Err(ProtocolError::InvalidFeeTokenAccount.into());
       }
-      None => {}
     }
     let from_amount_before = user_args.token_source_account.balance()?;
     let to_amount_before = user_args.token_destination_account.balance()?;
@@ -625,6 +629,7 @@ impl Processor {
     if accounts.len() < 6 {
       return Err(ProtocolError::InvalidAccountsLength.into());
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (fixed_accounts, other_accounts) = array_refs![accounts, 6; ..;];
 
     let (
@@ -666,17 +671,14 @@ impl Processor {
     if fee_token_account.mint()? != user_args.token_destination_account.mint()? {
       return Err(ProtocolError::InvalidFeeTokenAccount.into());
     }
-    if fee_token_account.owner()?.to_string() != OWNER_KEY.to_string() {
+    if fee_token_account.owner()?.to_string() != *OWNER_KEY {
       return Err(ProtocolError::InvalidFeeTokenAccount.into());
     }
 
-    match fee_token_account.delegate()? {
-      Some(delegate) => {
-        if delegate == *user_args.source_account_owner.key {
-          return Err(ProtocolError::InvalidFeeTokenAccount.into());
-        }
+    if let Some(delegate) = fee_token_account.delegate()? {
+      if delegate == *user_args.source_account_owner.key {
+        return Err(ProtocolError::InvalidFeeTokenAccount.into());
       }
-      None => {}
     }
     let from_amount_before = user_args.token_source_account.balance()?;
     let to_amount_before = user_args.token_destination_account.balance()?;
@@ -858,11 +860,11 @@ impl Processor {
     }
     swap_accounts.push(spl_token_swap_args.program.clone());
 
-    let instruction_data = spl_token_swap::Swap {
+    let instruction_data = spl_token_swap::instruction::Swap {
       amount_in: token_swap_amount_in,
-      minimum_amount_out: minimum_amount_out,
+      minimum_amount_out,
     };
-    let instruction = spl_token_swap::spl_token_swap_instruction(
+    let instruction = spl_token_swap::instruction::swap(
       spl_token_swap_args.program.key,
       spl_token_program.inner().key,
       spl_token_swap_args.swap_info.inner().key,
@@ -905,8 +907,8 @@ impl Processor {
       DexSide::Ask => (destination_token_account, source_token_account),
     };
 
-    let orderbook = serum_dex_order::OrderbookClient {
-      market: serum_dex_order::MarketAccounts {
+    let orderbook = serum_dex::order::OrderbookClient {
+      market: serum_dex::order::MarketAccounts {
         market: dex_args.market.inner(),
         open_orders: dex_args.open_orders.inner(),
         request_queue: dex_args.request_queue_acc,
@@ -936,7 +938,7 @@ impl Processor {
   }
 
   /// Step swap in spl-token-swap
-  #[allow(clippy::too_many_arguments, unused_variables)]
+  #[allow(clippy::too_many_arguments)]
   fn process_step_stableswap<'a, 'b: 'a>(
     program_id: &Pubkey,
     amount_in: u64,
@@ -985,7 +987,8 @@ impl Processor {
       swap_args.program_acc.clone(),
     ];
 
-    let instruction = stable_swap_client::instruction::swap(
+    let instruction = stable_swap::instruction::swap(
+      program_id,
       spl_token_program.inner().key,
       swap_args.swap_info.inner().key,
       swap_args.authority_acc.key,
@@ -1053,7 +1056,7 @@ impl Processor {
       source_account_authority.clone(),
     ];
 
-    let instruction = raydium_swap::swap(
+    let instruction = raydium::instruction::swap(
       swap_args.program_id.key,
       swap_args.amm_info.pubkey(),
       swap_args.authority.key,
@@ -1122,7 +1125,7 @@ impl Processor {
       source_account_authority.clone(),
     ];
 
-    let instruction = raydium_swap::swap_slim(
+    let instruction = raydium::instruction::swap_slim(
       swap_args.program_id.key,
       swap_args.amm_info.pubkey(),
       swap_args.authority.key,
@@ -1157,20 +1160,20 @@ impl Processor {
     }
   }
   /// check token account authority
-  pub fn check_token_account_authority(
-    token_account: &spl_token::state::Account,
-    authority_info: &Pubkey,
-  ) -> Result<(), ProtocolError> {
-    if !token_account
-      .delegate
-      .map(|d| d == *authority_info)
-      .unwrap_or(false)
-      || token_account.owner == *authority_info
-    {
-      return Err(ProtocolError::InvalidDelegate);
-    }
-    Ok(())
-  }
+  // pub fn check_token_account_authority(
+  //   token_account: &spl_token::state::Account,
+  //   authority_info: &Pubkey,
+  // ) -> Result<(), ProtocolError> {
+  //   if !token_account
+  //     .delegate
+  //     .map(|d| d == *authority_info)
+  //     .unwrap_or(false)
+  //     || token_account.owner == *authority_info
+  //   {
+  //     return Err(ProtocolError::InvalidDelegate);
+  //   }
+  //   Ok(())
+  // }
 
   /// Issue a spl_token `Transfer` instruction.
   pub fn token_transfer_signed<'a>(

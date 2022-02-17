@@ -54,7 +54,8 @@ impl SwapInstruction {
 }
 
 /// Creates a 'swap' instruction.
-pub fn spl_token_swap_instruction(
+#[allow(clippy::too_many_arguments)]
+pub fn swap(
   program_id: &Pubkey,
   token_program_id: &Pubkey,
   swap_pubkey: &Pubkey,

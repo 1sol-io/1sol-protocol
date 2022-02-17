@@ -1,10 +1,11 @@
+use crate::swappers::serum_dex::matching::Side as DexSide;
 use crate::{
   check_unreachable,
   error::{ProtocolError, ProtocolResult},
+  spl_token,
   state::SwapInfo,
 };
 use arrayref::{array_ref, array_refs};
-use serum_dex::{matching::Side as DexSide, state::AccountFlag as SerumAccountFlag};
 use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
 
 pub trait ArgsSize {
@@ -61,7 +62,7 @@ declare_validated_account_wrapper!(TokenAccount, |account: &AccountInfo| {
   let data = account
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-  if data.len() != spl_token::state::Account::LEN {
+  if data.len() != spl_token::ACCOUNT_LEN {
     return Err(ProtocolError::InvalidTokenAccount);
   };
   let is_initialized = data[0x6c];
@@ -78,7 +79,7 @@ declare_validated_account_wrapper!(TokenMint, |mint: &AccountInfo| {
   let data = mint
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-  if data.len() != spl_token::state::Mint::LEN {
+  if data.len() != spl_token::MINT_LEN {
     return Err(ProtocolError::InvalidTokenMint);
   };
   let is_initialized = data[0x2d];
@@ -148,14 +149,9 @@ declare_validated_account_wrapper!(SerumDexMarket, |account: &AccountInfo| {
    *  Initialized = 1u64 << 0,
    *  Market = 1u64 << 1,
    */
-  // BitFlags::
-  // if flag_data != 3768656749939 {
-  if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::Market).bits() {
-    msg!(
-      "flag_data: {:?}, expect: {:?}",
-      flag_data,
-      (SerumAccountFlag::Initialized | SerumAccountFlag::Market).bits()
-    );
+  if flag_data != 3 {
+    // if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::Market).bits() {
+    msg!("flag_data: {:?}, expect: {:?}", flag_data, 3,);
     return Err(ProtocolError::InvalidSerumDexMarketAccount);
   }
   Ok(())
@@ -173,6 +169,7 @@ declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
   if account_data.len() != MARKET_LEN {
     return Err(ProtocolError::InvalidSerumDexMarketAccount);
   }
+  #[allow(clippy::ptr_offset_with_cast)]
   let (_, data, _) = array_refs![&account_data, 5; ..; 7];
   let flag_data = u64::from_le_bytes(*array_ref![data, 0, 8]);
   /**
@@ -180,15 +177,11 @@ declare_validated_account_wrapper!(SerumDexOpenOrders, |account: &AccountInfo| {
    *  Market = 1u64 << 1,
    */
   // BitFlags::
-  // if flag_data != 3768656749939 {
-  // if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits() {
-  //   msg!(
-  //     "flag_data: {:?}, expect: {:?}",
-  //     flag_data,
-  //     (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits()
-  //   );
-  //   return Err(ProtocolError::InvalidSerumDexMarketAccount);
-  // }
+  if flag_data != 5 {
+    // if flag_data != (SerumAccountFlag::Initialized | SerumAccountFlag::OpenOrders).bits() {
+    msg!("flag_data: {:?}, expect: {:?}", flag_data, 5,);
+    return Err(ProtocolError::InvalidOpenOrdersAccount);
+  }
   Ok(())
 });
 
@@ -260,15 +253,12 @@ impl<'a, 'b: 'a> TokenAccount<'a, 'b> {
       return Err(ProtocolError::InvalidOwner);
     }
     let delegate = self.delegate()?;
-    match delegate {
-      Some(d) => {
-        if d == *authority {
-          return Ok(());
-        }
+    if let Some(d) = delegate {
+      if d == *authority {
+        return Ok(());
       }
-      None => {}
     }
-    return Err(ProtocolError::InvalidOwner);
+    Err(ProtocolError::InvalidOwner)
   }
 
   // pub fn check_delegate(self, authority: &Pubkey) -> ProtocolResult<()> {
@@ -292,6 +282,7 @@ impl<'a, 'b: 'a> SerumDexMarket<'a, 'b> {
       .inner()
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    #[allow(clippy::ptr_offset_with_cast)]
     let (_, data, _) = array_refs![&account_data, 5; ..; 7];
     Ok(Pubkey::new_from_array(*array_ref![data, 48, 32]))
   }
@@ -301,6 +292,7 @@ impl<'a, 'b: 'a> SerumDexMarket<'a, 'b> {
       .inner()
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    #[allow(clippy::ptr_offset_with_cast)]
     let (_, data, _) = array_refs![&account_data, 5; ..; 7];
     Ok(Pubkey::new_from_array(*array_ref![data, 80, 32]))
   }
@@ -313,6 +305,7 @@ impl<'a, 'b: 'a> SerumDexOpenOrders<'a, 'b> {
       .inner()
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    #[allow(clippy::ptr_offset_with_cast)]
     let (_, data, _) = array_refs![&account_data, 5; ..; 7];
     Ok(Pubkey::new_from_array(*array_ref![data, 8, 32]))
   }
@@ -322,6 +315,7 @@ impl<'a, 'b: 'a> SerumDexOpenOrders<'a, 'b> {
       .inner()
       .try_borrow_data()
       .map_err(|_| ProtocolError::BorrowAccountDataError)?;
+    #[allow(clippy::ptr_offset_with_cast)]
     let (_, data, _) = array_refs![&account_data, 5; ..; 7];
     Ok(Pubkey::new_from_array(*array_ref![data, 40, 32]))
   }
@@ -363,7 +357,7 @@ pub struct UserArgs<'a, 'b: 'a> {
 impl<'a, 'b: 'a> UserArgs<'a, 'b> {
   pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
     const MIN_ACCOUNTS: usize = 3;
-    if !(accounts.len() == MIN_ACCOUNTS) {
+    if accounts.len() != MIN_ACCOUNTS {
       return Err(ProtocolError::InvalidAccountsLength);
     }
 
@@ -430,6 +424,7 @@ impl<'a, 'b: 'a> SplTokenSwapArgs<'a, 'b> {
     if !(accounts.len() == MIN_ACCOUNTS || accounts.len() == MIN_ACCOUNTS + 1) {
       return Err(ProtocolError::InvalidAccountsLength);
     }
+    #[allow(clippy::ptr_offset_with_cast)]
     let (fixed_accounts, host_fee_account): (
       &'a [AccountInfo<'b>; MIN_ACCOUNTS],
       &'a [AccountInfo<'b>],
@@ -444,8 +439,8 @@ impl<'a, 'b: 'a> SplTokenSwapArgs<'a, 'b> {
       ref program_acc,
     ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
     let host_fee_acc = match host_fee_account {
-      &[] => None,
-      &[ref acc] => Some(TokenAccount::new(acc)?),
+      [] => None,
+      [ref acc] => Some(TokenAccount::new(acc)?),
       _ => check_unreachable!()?,
     };
     let swap_info = SplTokenSwapInfo::new(swap_info_acc)?;
@@ -559,7 +554,7 @@ declare_validated_account_wrapper!(StableSwapInfo, |account: &AccountInfo| {
   let data = account
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-  if data.len() != stable_swap_client::state::SwapInfo::LEN {
+  if data.len() != 395 {
     return Err(ProtocolError::InvalidStableSwapAccount);
   }
   let is_initialized = data[0];
@@ -870,15 +865,15 @@ impl<'a, 'b: 'a> RaydiumSwapArgs<'a, 'b> {
       target_orders: target_orders_acc,
       pool_token_coin: TokenAccount::new(pool_token_coin_acc)?,
       pool_token_pc: TokenAccount::new(pool_token_pc_acc)?,
-      serum_dex_program_id: serum_dex_program_id,
+      serum_dex_program_id,
       serum_market: market,
-      bids: bids,
-      asks: asks,
-      event_q: event_q,
+      bids,
+      asks,
+      event_q,
       coin_vault: TokenAccount::new(coin_vault_acc)?,
       pc_vault: TokenAccount::new(pc_vault_acc)?,
-      vault_signer: vault_signer,
-      program_id: program_id,
+      vault_signer,
+      program_id,
     })
   }
 
@@ -978,15 +973,15 @@ impl<'a, 'b: 'a> RaydiumSwapArgs2<'a, 'b> {
       open_orders: SerumDexOpenOrders::new(open_orders_acc)?,
       pool_token_coin: TokenAccount::new(pool_token_coin_acc)?,
       pool_token_pc: TokenAccount::new(pool_token_pc_acc)?,
-      serum_dex_program_id: serum_dex_program_id,
+      serum_dex_program_id,
       serum_market: market,
-      bids: bids,
-      asks: asks,
-      event_q: event_q,
+      bids,
+      asks,
+      event_q,
       coin_vault: TokenAccount::new(coin_vault_acc)?,
       pc_vault: TokenAccount::new(pc_vault_acc)?,
-      vault_signer: vault_signer,
-      program_id: program_id,
+      vault_signer,
+      program_id,
     })
   }
 
