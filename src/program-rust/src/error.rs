@@ -211,6 +211,9 @@ pub enum ProtocolError {
 
   #[error("invalid fee token account")]
   InvalidFeeTokenAccount,
+
+  #[error("invalid crema swap account data")]
+  InvalidCremaSwapAccountData,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -315,7 +318,10 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidOpenOrdersAccount => {
         msg!("Error: InvalidOpenOrdersAccount")
-      }
+      },
+      ProtocolError::InvalidCremaSwapAccountData => {
+        msg!("Error: InvalidCremaSwapAccountData")
+      },
     }
   }
 }
