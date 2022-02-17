@@ -1,14 +1,18 @@
 use crate::error::ProtocolError;
-use serum_dex::{instruction, matching::Side, state::MarketState};
+//use serum_dex::{instruction, matching::Side, state::MarketState};
 use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
-  instruction::{AccountMeta, Instruction},
   program::{invoke, invoke_signed},
   pubkey::Pubkey,
-  sysvar::rent,
 };
 use std::num::NonZeroU64;
+
+use super::{
+  instruction::{self, init_open_orders, SelfTradeBehavior},
+  matching::{OrderType, Side},
+  state::MarketState,
+};
 
 // An exchange rate for swapping *from* one token *to* another.
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -90,7 +94,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     let limit_price = 1;
     let max_coin_qty = {
       // The loaded market must be dropped before CPI.
-      let market = MarketState::load(&self.market.market, self.dex_program.key)?;
+      let market = MarketState::unpack_from_slice(&self.market.market.try_borrow_data()?)?;
       coin_lots(&market, base_amount)
     };
     let max_native_pc_qty = u64::MAX;
@@ -170,9 +174,8 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       self.token_program.clone(),
       self.rent.clone(),
     ];
-    match srm_msrm_discount.clone() {
-      Some(account) => accounts.push(account),
-      None => {}
+    if let Some(account) = srm_msrm_discount.clone() {
+      accounts.push(account)
     };
     let srm_msrm_discount_key = match srm_msrm_discount {
       Some(acc) => {
@@ -183,7 +186,7 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
     };
     accounts.push(self.dex_program.clone());
 
-    let instruction = serum_dex::instruction::new_order(
+    let instruction = instruction::new_order(
       self.market.market.key,
       self.market.open_orders.key,
       self.market.request_queue.key,
@@ -201,9 +204,9 @@ impl<'a, 'info: 'a> OrderbookClient<'a, 'info> {
       side,
       NonZeroU64::new(limit_price).unwrap(),
       NonZeroU64::new(max_coin_qty).unwrap(),
-      serum_dex::matching::OrderType::ImmediateOrCancel,
+      OrderType::ImmediateOrCancel,
       client_order_id,
-      serum_dex::instruction::SelfTradeBehavior::DecrementTake,
+      SelfTradeBehavior::DecrementTake,
       limit,
       NonZeroU64::new(max_native_pc_qty).unwrap(),
     )
@@ -282,31 +285,4 @@ pub fn invoke_init_open_orders<'a>(
     signers,
   )
   .map_err(|_| ProtocolError::InvokeError)
-}
-
-pub fn init_open_orders(
-  program_id: &Pubkey,
-  open_orders: &Pubkey,
-  owner: &Pubkey,
-  market: &Pubkey,
-  market_authority: Option<&Pubkey>,
-) -> Result<Instruction, ProtocolError> {
-  let mut buf: Vec<u8> = Vec::with_capacity(5);
-  buf.insert(0, 0u8);
-  buf.extend_from_slice(&15u32.to_le_bytes());
-
-  let mut accounts: Vec<AccountMeta> = vec![
-    AccountMeta::new(*open_orders, false),
-    AccountMeta::new_readonly(*owner, true),
-    AccountMeta::new_readonly(*market, false),
-    AccountMeta::new_readonly(rent::ID, false),
-  ];
-  if let Some(market_authority) = market_authority {
-    accounts.push(AccountMeta::new_readonly(*market_authority, true));
-  }
-  Ok(Instruction {
-    program_id: *program_id,
-    data: buf,
-    accounts,
-  })
 }

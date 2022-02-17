@@ -33,26 +33,6 @@ impl ExchangerType {
   }
 }
 
-// #[derive(Clone, Debug, PartialEq, Copy)]
-// pub struct ExchangeStep {
-//   pub exchanger_type: ExchangerType,
-//   pub accounts_count: usize,
-// }
-
-// impl ExchangeStep {
-//   pub const LEN: usize = 2;
-
-//   pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-//     let arr_data = array_ref![input, 0, ExchangeStep::LEN];
-//     let (&[exchanger_type], &[accounts_count]) = array_refs![arr_data, 1, 1];
-//     Ok(Self {
-//       exchanger_type: ExchangerType::from(exchanger_type)
-//         .ok_or(ProgramError::InvalidInstructionData)?,
-//       accounts_count: accounts_count as usize,
-//     })
-//   }
-// }
-
 /// Initialize instruction data
 #[derive(Clone, Debug, PartialEq)]
 pub struct Initialize {
