@@ -1,4 +1,4 @@
-use std::{mem::size_of, str::FromStr};
+use std::mem::size_of;
 
 use solana_program::{
   instruction::{AccountMeta, Instruction},
@@ -37,7 +37,7 @@ impl SwapInstrution {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn swap_instruction(
+pub fn swap_instruction(
   program_id: &Pubkey,
   swap_info_account: &Pubkey,
   swap_authority: &Pubkey,

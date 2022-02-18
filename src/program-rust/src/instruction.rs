@@ -18,6 +18,10 @@ pub enum ExchangerType {
   RaydiumSwap,
   /// Raydium swap slim
   RaydiumSwapSlim,
+  /// CremaFinance swap
+  CremaSwap,
+  /// Aldrin swap
+  AldrinSwap,
 }
 
 impl ExchangerType {
@@ -28,6 +32,8 @@ impl ExchangerType {
       2 => Some(ExchangerType::StableSwap),
       3 => Some(ExchangerType::RaydiumSwap),
       4 => Some(ExchangerType::RaydiumSwapSlim),
+      5 => Some(ExchangerType::CremaSwap),
+      6 => Some(ExchangerType::AldrinSwap),
       _ => None,
     }
   }
@@ -74,25 +80,10 @@ pub struct SwapOutSlimInstruction {
   pub minimum_amount_out: NonZeroU64,
 }
 
-// /// Swap from multiple exchanger
-// #[derive(Clone, Debug, PartialEq, Copy)]
-// pub struct SwapTwoStepsInstruction {
-//   /// the amount to swap *from*
-//   pub amount_in: NonZeroU64,
-//   /// expect amount of tokens to swap
-//   pub expect_amount_out: NonZeroU64,
-//   /// Minimum amount of DESTINATION token to output, prevents excessive slippage
-//   pub minimum_amount_out: NonZeroU64,
-//   /// Step1
-//   pub step1: ExchangeStep,
-//   /// Step1
-//   pub step2: ExchangeStep,
-// }
-
 // Instructions supported by the 1sol protocol program
 #[repr(C)]
 #[derive(Debug, PartialEq)]
-pub enum OneSolInstruction {
+pub enum ProtocolInstruction {
   /// Swap the tokens in the pool.
   ///
   ///   user accounts
@@ -382,9 +373,110 @@ pub enum OneSolInstruction {
   ///     18. `[]` raydium vault_signer account.
   ///     19. `[]` raydium program id.
   SwapRaydiumOut2(SwapOutSlimInstruction),
+
+  /// Swap direct by CremaSwap
+  ///
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet)
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[]` Token program id
+  ///   4. `[writable]` fee token account
+  ///
+  ///   5. `[writable]` CremaSwap swap_info account
+  ///   6. `[]` CremaSwap authority
+  ///   7. `[writable]` CremaSwap token_A Account.
+  ///   8. `[writable]` CremaSwap token_B Account.
+  ///   9. `[writable]` CremaSwap tick dst Account.
+  ///   10. '[]` CremaSwap program id
+  SwapCremaSwap(SwapInstruction),
+
+  /// SwapIn by CremaSwap
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` Protocol SwapInfo account
+  ///   4. '[]` Token program id.
+  ///
+  ///   5. `[writable]` CremaSwap swap_info account
+  ///   6. `[]` CremaSwap authority
+  ///   7. `[writable]` CremaSwap token_A Account.
+  ///   8. `[writable]` CremaSwap token_B Account.
+  ///   9. `[writable]` CremaSwap tick dst Account.
+  ///   10. '[]` CremaSwap program id
+  SwapCremaSwapIn(SwapInInstruction),
+
+  /// SwapOut by CremaSwap
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` SwapInfo account
+  ///   4. '[]` Token program id.
+  ///   5. `[writable]` fee token account.
+  ///
+  ///   6. `[writable]` CremaSwap swap_info account
+  ///   7. `[]` CremaSwap authority
+  ///   8. `[writable]` CremaSwap token_A Account.
+  ///   9. `[writable]` CremaSwap token_B Account.
+  ///   10. `[writable]` CremaSwap tick dst Account.
+  ///   11. '[]` CremaSwap program id
+  SwapCremaSwapOut(SwapOutInstruction),
+
+  /// Swap direct by AldrinSwap
+  ///
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet)
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[]` Token program id
+  ///   4. `[writable]` fee token account
+  ///
+  ///   5. `[]` AldrinSwap pool_info account.
+  ///   6. `[]` AldrinSwap pool authority.
+  ///   7. `[writable]` AldrinSwap pool mint account. 
+  ///   8. `[writable]` AldrinSwap pool coin vault account.
+  ///   9. `[writable]` AldrinSwap pool pc vault account.
+  ///   10. `[writable]` AldrinSwap Pool fee account.
+  ///   11. `[]` AldrinSwap Pool curve_key account.
+  ///   12. '[]` AldrinSwap program id.
+  SwapAldrinSwap(SwapInstruction),
+
+  /// SwapIn by AldrinSwap
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` Protocol SwapInfo account
+  ///   4. '[]` Token program id.
+  ///
+  ///   5. `[]` AldrinSwap pool_info account.
+  ///   6. `[]` AldrinSwap pool authority.
+  ///   7. `[writable]` AldrinSwap pool mint account. 
+  ///   8. `[writable]` AldrinSwap pool coin vault account.
+  ///   9. `[writable]` AldrinSwap pool pc vault account.
+  ///   10. `[writable]` AldrinSwap Pool fee account.
+  ///   11. `[]` AldrinSwap Pool curve_key account.
+  ///   12. '[]` AldrinSwap program id.
+  SwapAldrinSwapIn(SwapInInstruction),
+
+  /// SwapOut by AldrinSwap
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` SwapInfo account
+  ///   4. '[]` Token program id.
+  ///   5. `[writable]` fee token account.
+  ///
+  ///   6. `[]` AldrinSwap pool_info account.
+  ///   7. `[]` AldrinSwap pool authority.
+  ///   8. `[writable]` AldrinSwap pool mint account. 
+  ///   9. `[writable]` AldrinSwap pool coin vault account.
+  ///   10. `[writable]` AldrinSwap pool pc vault account.
+  ///   11. `[writable]` AldrinSwap Pool fee account.
+  ///   12. `[]` AldrinSwap Pool curve_key account.
+  ///   13. '[]` AldrinSwap program id.
+  SwapAldrinSwapOut(SwapOutInstruction),
+
 }
 
-impl OneSolInstruction {
+impl ProtocolInstruction {
   /// Unpacks a byte buffer into a [OneSolInstruction](enum.OneSolInstruction.html).
   pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
     let (&tag, rest) = input.split_first().ok_or(ProtocolError::InvalidInput)?;
@@ -407,6 +499,12 @@ impl OneSolInstruction {
       19 => Self::SwapRaydiumOut(SwapOutInstruction::unpack(rest)?),
       20 => Self::SwapRaydiumIn2(SwapInInstruction::unpack(rest)?),
       21 => Self::SwapRaydiumOut2(SwapOutSlimInstruction::unpack(rest)?),
+      22 => Self::SwapCremaSwap(SwapInstruction::unpack(rest)?),
+      23 => Self::SwapCremaSwapIn(SwapInInstruction::unpack(rest)?),
+      24 => Self::SwapCremaSwapOut(SwapOutInstruction::unpack(rest)?),
+      25 => Self::SwapAldrinSwap(SwapInstruction::unpack(rest)?),
+      26 => Self::SwapAldrinSwapIn(SwapInInstruction::unpack(rest)?),
+      27 => Self::SwapAldrinSwapOut(SwapOutInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }

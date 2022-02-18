@@ -48,7 +48,7 @@ impl SwapInstrution {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn swap_instruction(
+pub fn swap_instruction(
   program_id: &Pubkey,
   pool_key: &Pubkey,
   pool_signer: &Pubkey,

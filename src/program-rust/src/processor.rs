@@ -2,13 +2,15 @@
 
 use crate::constraints::OWNER_KEY;
 use crate::instruction::SwapOutSlimInstruction;
+use crate::parser::aldrin::AldrinPoolArgs;
+use crate::parser::crema::CremaSwapV1Args;
 use crate::spl_token;
 use crate::state::Status;
-use crate::swappers::stable_swap;
+use crate::swappers::{stable_swap, crema, aldrin};
 use crate::{
   error::ProtocolError,
   instruction::{
-    ExchangerType, OneSolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
+    ExchangerType, ProtocolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
   },
   parser::{
     base::{SplTokenProgram, SwapInfoArgs, TokenAccount, UserArgs},
@@ -45,76 +47,94 @@ pub struct Processor {}
 impl Processor {
   /// Processes an [Instruction](enum.Instruction.html).
   pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], input: &[u8]) -> ProgramResult {
-    let instruction = OneSolInstruction::unpack(input)?;
+    let instruction = ProtocolInstruction::unpack(input)?;
     match instruction {
-      OneSolInstruction::SwapSplTokenSwap(data) => {
+      ProtocolInstruction::SwapSplTokenSwap(data) => {
         msg!("Instruction: Swap TokenSwap");
         Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::SplTokenSwap)
       }
-      OneSolInstruction::SwapSerumDex(data) => {
+      ProtocolInstruction::SwapSerumDex(data) => {
         msg!("Instruction: Swap SerumDex");
         Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::SerumDex)
       }
-      OneSolInstruction::SwapStableSwap(data) => {
+      ProtocolInstruction::SwapStableSwap(data) => {
         msg!("Instruction: Swap StableSwap");
         Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::StableSwap)
       }
-      OneSolInstruction::SwapRaydiumSwap(data) => {
+      ProtocolInstruction::SwapRaydiumSwap(data) => {
         msg!("Instruction: Swap RaydiumSwap");
         Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::RaydiumSwap)
       }
-      OneSolInstruction::InitializeSwapInfo => {
+      ProtocolInstruction::InitializeSwapInfo => {
         msg!("Instruction: InitializeSwapInfo");
         Self::process_initialize_swap_info(program_id, accounts)
       }
-      OneSolInstruction::SetupSwapInfo => {
+      ProtocolInstruction::SetupSwapInfo => {
         msg!("Instruction: SetupSwapInfo");
         Self::process_setup_swap_info(program_id, accounts)
       }
-      OneSolInstruction::SwapSplTokenSwapIn(data) => {
+      ProtocolInstruction::SwapSplTokenSwapIn(data) => {
         msg!("Instruction: Swap SplTokenSwap In");
         Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::SplTokenSwap)
       }
-      OneSolInstruction::SwapSplTokenSwapOut(data) => {
+      ProtocolInstruction::SwapSplTokenSwapOut(data) => {
         msg!("Instruction: Swap SplTokenSwap Out");
         Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::SplTokenSwap)
       }
-      OneSolInstruction::SwapSerumDexIn(data) => {
+      ProtocolInstruction::SwapSerumDexIn(data) => {
         msg!("Instruction: Swap SplTokenSwap In");
         Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::SerumDex)
       }
-      OneSolInstruction::SwapSerumDexOut(data) => {
+      ProtocolInstruction::SwapSerumDexOut(data) => {
         msg!("Instruction: Swap SplTokenSwap Out");
         Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::SerumDex)
       }
-      OneSolInstruction::SwapStableSwapIn(data) => {
+      ProtocolInstruction::SwapStableSwapIn(data) => {
         msg!("Instruction: Swap SplTokenSwap In");
         Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::StableSwap)
       }
-      OneSolInstruction::SwapStableSwapOut(data) => {
+      ProtocolInstruction::SwapStableSwapOut(data) => {
         msg!("Instruction: Swap SplTokenSwap Out");
         Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::StableSwap)
       }
-      OneSolInstruction::SwapRaydiumIn(data) => {
+      ProtocolInstruction::SwapRaydiumIn(data) => {
         msg!("Instruction: Swap SplTokenSwap In");
         Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::RaydiumSwap)
       }
-      OneSolInstruction::SwapRaydiumOut(data) => {
+      ProtocolInstruction::SwapRaydiumOut(data) => {
         msg!("Instruction: Swap SplTokenSwap Out");
         Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::RaydiumSwap)
       }
-      OneSolInstruction::SwapRaydiumIn2(data) => Self::process_single_step_swap_in(
+      ProtocolInstruction::SwapRaydiumIn2(data) => Self::process_single_step_swap_in(
         program_id,
         &data,
         accounts,
         ExchangerType::RaydiumSwapSlim,
       ),
-      OneSolInstruction::SwapRaydiumOut2(data) => Self::process_single_step_swap_out_slim(
+      ProtocolInstruction::SwapRaydiumOut2(data) => Self::process_single_step_swap_out_slim(
         program_id,
         &data,
         accounts,
         ExchangerType::RaydiumSwapSlim,
       ),
+      ProtocolInstruction::SwapCremaSwap(data) => {
+        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::CremaSwap)
+      }
+      ProtocolInstruction::SwapCremaSwapIn(data) => {
+        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::CremaSwap)
+      }
+      ProtocolInstruction::SwapCremaSwapOut(data) => {
+        Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::CremaSwap)
+      }
+      ProtocolInstruction::SwapAldrinSwap(data) => {
+        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::AldrinSwap)
+      }
+      ProtocolInstruction::SwapAldrinSwapIn(data) => {
+        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::AldrinSwap)
+      }
+      ProtocolInstruction::SwapAldrinSwapOut(data) => {
+        Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::AldrinSwap)
+      }
     }
   }
 
@@ -274,6 +294,8 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
+      ExchangerType::CremaSwap => todo!(),
+      ExchangerType::AldrinSwap => todo!(),
     }?;
     let from_amount_after = user_args.token_source_account.balance()?;
     let to_amount_after = user_args.token_destination_account.balance()?;
@@ -410,6 +432,26 @@ impl Processor {
         other_accounts,
       ),
       ExchangerType::SerumDex => Self::process_step_serumdex(
+        program_id,
+        data.amount_in.get(),
+        u64::MIN + 1,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::CremaSwap => Self::process_step_cremaswap(
+        program_id,
+        data.amount_in.get(),
+        u64::MIN + 1,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::AldrinSwap => Self::process_step_aldrinswap(
         program_id,
         data.amount_in.get(),
         u64::MIN + 1,
@@ -560,6 +602,26 @@ impl Processor {
         other_accounts,
       ),
       ExchangerType::SerumDex => Self::process_step_serumdex(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::CremaSwap => Self::process_step_cremaswap (
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::AldrinSwap => Self::process_step_aldrinswap(
         program_id,
         amount_in,
         amount_out,
@@ -736,6 +798,26 @@ impl Processor {
         other_accounts,
       ),
       ExchangerType::SerumDex => Self::process_step_serumdex(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::CremaSwap => Self::process_step_cremaswap(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::AldrinSwap => Self::process_step_aldrinswap(
         program_id,
         amount_in,
         amount_out,
@@ -1153,6 +1235,164 @@ impl Processor {
     Ok(())
   }
 
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments)]
+  fn process_step_cremaswap<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    amount_in: u64,
+    minimum_amount_out: u64,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    source_account_authority: &'a AccountInfo<'b>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    sol_log_compute_units();
+
+    let swap_args = CremaSwapV1Args::with_parsed_args(accounts)?;
+    let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
+
+    msg!(
+      "swap using crema-swap, amount_in: {}, minimum_amount_out: {}",
+      amount_in,
+      minimum_amount_out,
+    );
+
+    let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+
+    let (pool_source_token_acc, pool_destination_token_acc) =
+      swap_args.find_token_pair(&source_token_mint)?;
+
+    if pool_source_token_acc.mint()? != source_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+    if pool_destination_token_acc.mint()? != destination_token_mint {
+      return Err(ProtocolError::InvalidTokenMint.into());
+    }
+
+    let swap_accounts = vec![
+      swap_args.swap_info.inner().clone(),
+      swap_args.authority.clone(),
+      source_account_authority.clone(),
+      source_token_account.inner().clone(),
+      destination_token_account.inner().clone(),
+      pool_source_token_acc.inner().clone(),
+      pool_destination_token_acc.inner().clone(),
+      swap_args.tick_dst.clone(),
+      spl_token_program.inner().clone(),
+    ];
+
+    let instruction = crema::instruction::swap_instruction(
+      program_id,
+      swap_args.swap_info.inner().key,
+      swap_args.authority.key,
+      source_account_authority.key,
+      source_token_account.inner().key,
+      destination_token_account.inner().key,
+      pool_source_token_acc.inner().key,
+      pool_destination_token_acc.inner().key,
+      swap_args.tick_dst.key,
+      spl_token_program.inner().key,
+      amount_in,
+      minimum_amount_out,
+    )?;
+
+    msg!("invoke crema-swap swap");
+
+    sol_log_compute_units();
+    invoke(&instruction, &swap_accounts)?;
+    sol_log_compute_units();
+    Ok(())
+  }
+
+  
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments)]
+  fn process_step_aldrinswap<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    amount_in: u64,
+    minimum_amount_out: u64,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    source_account_authority: &'a AccountInfo<'b>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    sol_log_compute_units();
+
+    let swap_args = AldrinPoolArgs::with_parsed_args(accounts)?;
+    let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
+
+    msg!(
+      "swap using aldrin-swap, amount_in: {}, minimum_amount_out: {}",
+      amount_in,
+      minimum_amount_out,
+    );
+
+
+    let source_token_mint = source_token_account.mint()?;
+
+    let side = swap_args.find_side(&source_token_mint)?;
+
+    let (user_coin_token_acc, user_pc_token_acc) = if side == aldrin::instruction::Side::Ask {
+      (source_token_account, destination_token_account)
+    } else {
+      (destination_token_account, source_token_account)
+    };
+
+    // let coin_mint = swap_args.pool_info.coin_mint()?;
+    // let pc_mint = swap_args.pool_info.pc_mint()?;
+
+    // let (user_coin_token_acc, user_pc_token_acc, side) =
+    //   if source_token_mint == coin_mint && destination_token_mint == pc_mint {
+    //     (source_token_account, destination_token_account, aldrin::instruction::Side::Ask)
+    //   } else if source_token_mint == pc_mint && destination_token_mint == coin_mint {
+    //     (destination_token_account, source_token_account, aldrin::instruction::Side::Bid)
+    //   } else {
+    //     return Err(ProtocolError::InvalidTokenMint.into());
+    //   };
+
+    let swap_accounts = vec![
+      swap_args.pool_info.inner().clone(),
+      swap_args.authority.clone(),
+      swap_args.pool_mint.inner().clone(),
+      swap_args.pool_coin_vault.inner().clone(),
+      swap_args.pool_pc_vault.inner().clone(),
+      swap_args.fee_account.clone(),
+      source_account_authority.clone(),
+      user_coin_token_acc.inner().clone(),
+      user_pc_token_acc.inner().clone(),
+      swap_args.curve_key.clone(),
+      spl_token_program.inner().clone(),
+    ];
+
+    let instruction = aldrin::instruction::swap_instruction(
+      program_id,
+      swap_args.pool_info.inner().key,
+      swap_args.authority.key,
+      swap_args.pool_mint.inner().key,
+      swap_args.pool_coin_vault.inner().key,
+      swap_args.pool_pc_vault.inner().key,
+      swap_args.fee_account.key,
+      swap_args.curve_key.key,
+      source_token_account.inner().key,
+      destination_token_account.inner().key,
+      source_account_authority.key,
+      spl_token_program.inner().key,
+      amount_in,
+      minimum_amount_out,
+      side,
+    )?;
+
+    msg!("invoke aldrin-swap swap");
+
+    sol_log_compute_units();
+    invoke(&instruction, &swap_accounts)?;
+    sol_log_compute_units();
+    Ok(())
+  }
+
   fn get_amount_in(amount_in: u64, source_token_balance: u64) -> u64 {
     if source_token_balance < amount_in {
       source_token_balance
@@ -1160,7 +1400,8 @@ impl Processor {
       amount_in
     }
   }
-  /// check token account authority
+
+  // /// check token account authority
   // pub fn check_token_account_authority(
   //   token_account: &spl_token::state::Account,
   //   authority_info: &Pubkey,
