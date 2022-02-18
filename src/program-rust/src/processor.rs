@@ -1,19 +1,21 @@
 //! Program state processor
 
-use crate::account_parser::RaydiumSwapArgs2;
 use crate::constraints::OWNER_KEY;
 use crate::instruction::SwapOutSlimInstruction;
 use crate::spl_token;
 use crate::state::Status;
 use crate::swappers::stable_swap;
 use crate::{
-  account_parser::{
-    RaydiumSwapArgs, SerumDexArgs, SplTokenProgram, SplTokenSwapArgs, StableSwapArgs, SwapInfoArgs,
-    TokenAccount, UserArgs,
-  },
   error::ProtocolError,
   instruction::{
     ExchangerType, OneSolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
+  },
+  parser::{
+    base::{SplTokenProgram, SwapInfoArgs, TokenAccount, UserArgs},
+    raydium::{RaydiumSwapArgs, RaydiumSwapArgs2},
+    serum_dex::SerumDexArgs,
+    spl_token_swap::SplTokenSwapArgs,
+    stable_swap::StableSwapArgs,
   },
   state::SwapInfo,
   swappers::{
@@ -23,7 +25,6 @@ use crate::{
   },
 };
 use arrayref::array_refs;
-// use safe_transmute::to_bytes::transmute_one_to_bytes;
 use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,

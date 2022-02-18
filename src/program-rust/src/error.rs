@@ -318,10 +318,10 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidOpenOrdersAccount => {
         msg!("Error: InvalidOpenOrdersAccount")
-      },
+      }
       ProtocolError::InvalidCremaSwapAccountData => {
         msg!("Error: InvalidCremaSwapAccountData")
-      },
+      }
     }
   }
 }
