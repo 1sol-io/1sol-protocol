@@ -1,10 +1,11 @@
 use super::base::{validate_authority_pubkey, TokenAccount, TokenMint};
 use crate::{
   declare_validated_account_wrapper,
-  error::{ProtocolError, ProtocolResult}, swappers::aldrin::instruction::Side,
+  error::{ProtocolError, ProtocolResult},
+  swappers::aldrin::instruction::Side,
 };
 use arrayref::array_ref;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, msg};
+use solana_program::{account_info::AccountInfo, msg, pubkey::Pubkey};
 
 declare_validated_account_wrapper!(AldrinPool, |account: &AccountInfo| {
   let account_data = account
@@ -125,27 +126,36 @@ impl<'a, 'b: 'a> AldrinPoolArgs<'a, 'b> {
       return Err(ProtocolError::InvalidTokenMint);
     }
     let pool_vault_1 = TokenAccount::new(pool_coin_vault_acc)?;
-    let pool_vault_2= TokenAccount::new(pool_pc_vault_acc)?;
+    let pool_vault_2 = TokenAccount::new(pool_pc_vault_acc)?;
 
     let coin_mint = pool_info.coin_mint()?;
     let pc_mint = pool_info.pc_mint()?;
 
     // auto invert vault token account
-    let (coin_vault, pc_vault) = if pool_vault_1.mint()? == coin_mint && pool_vault_2.mint()? == pc_mint {
-      (pool_vault_1, pool_vault_2)
-    } else if pool_vault_1.mint()? == pc_mint && pool_vault_2.mint()? == coin_mint {
-      (pool_vault_2, pool_vault_1)
-    } else {
-      return Err(ProtocolError::InvalidTokenMint);
-    };
+    let (coin_vault, pc_vault) =
+      if pool_vault_1.mint()? == coin_mint && pool_vault_2.mint()? == pc_mint {
+        (pool_vault_1, pool_vault_2)
+      } else if pool_vault_1.mint()? == pc_mint && pool_vault_2.mint()? == coin_mint {
+        (pool_vault_2, pool_vault_1)
+      } else {
+        return Err(ProtocolError::InvalidTokenMint);
+      };
 
     if *coin_vault.inner().key != pool_info.coin_vault()? {
-      msg!("coin_vault got {}, expect: {}", coin_vault.inner().key, pool_info.coin_vault()?);
+      msg!(
+        "coin_vault got {}, expect: {}",
+        coin_vault.inner().key,
+        pool_info.coin_vault()?
+      );
       return Err(ProtocolError::InvalidTokenAccount);
     }
 
     if *pc_vault.inner().key != pool_info.pc_vault()? {
-      msg!("pc_vault got {}, expect: {}", pc_vault.inner().key, pool_info.pc_vault()?);
+      msg!(
+        "pc_vault got {}, expect: {}",
+        pc_vault.inner().key,
+        pool_info.pc_vault()?
+      );
       return Err(ProtocolError::InvalidTokenAccount);
     }
 

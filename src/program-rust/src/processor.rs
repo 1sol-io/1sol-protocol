@@ -6,7 +6,7 @@ use crate::parser::aldrin::AldrinPoolArgs;
 use crate::parser::crema::CremaSwapV1Args;
 use crate::spl_token;
 use crate::state::Status;
-use crate::swappers::{stable_swap, crema, aldrin};
+use crate::swappers::{aldrin, crema, stable_swap};
 use crate::{
   error::ProtocolError,
   instruction::{
@@ -611,7 +611,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::CremaSwap => Self::process_step_cremaswap (
+      ExchangerType::CremaSwap => Self::process_step_cremaswap(
         program_id,
         amount_in,
         amount_out,
@@ -1306,7 +1306,6 @@ impl Processor {
     Ok(())
   }
 
-  
   /// Step swap in spl-token-swap
   #[allow(clippy::too_many_arguments)]
   fn process_step_aldrinswap<'a, 'b: 'a>(
@@ -1329,7 +1328,6 @@ impl Processor {
       amount_in,
       minimum_amount_out,
     );
-
 
     let source_token_mint = source_token_account.mint()?;
 

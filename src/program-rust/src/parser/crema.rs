@@ -130,13 +130,16 @@ impl<'a, 'b: 'a> CremaSwapV1Args<'a, 'b> {
     })
   }
 
-  pub fn find_token_pair(&self, source_mint_key: &Pubkey) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
+  pub fn find_token_pair(
+    &self,
+    source_mint_key: &Pubkey,
+  ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
     let pool_token_a_mint = self.swap_info.token_a_mint()?;
     let pool_token_b_mint = self.swap_info.token_b_mint()?;
     if *source_mint_key == pool_token_a_mint {
-      return Ok((&self.pool_token_a, &self.pool_token_b))
+      return Ok((&self.pool_token_a, &self.pool_token_b));
     } else if *source_mint_key == pool_token_b_mint {
-      return Ok((&self.pool_token_b, &self.pool_token_a))
+      return Ok((&self.pool_token_b, &self.pool_token_a));
     }
     Err(ProtocolError::InvalidTokenMint)
   }

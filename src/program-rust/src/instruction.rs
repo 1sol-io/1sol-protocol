@@ -431,7 +431,7 @@ pub enum ProtocolInstruction {
   ///
   ///   5. `[]` AldrinSwap pool_info account.
   ///   6. `[]` AldrinSwap pool authority.
-  ///   7. `[writable]` AldrinSwap pool mint account. 
+  ///   7. `[writable]` AldrinSwap pool mint account.
   ///   8. `[writable]` AldrinSwap pool coin vault account.
   ///   9. `[writable]` AldrinSwap pool pc vault account.
   ///   10. `[writable]` AldrinSwap Pool fee account.
@@ -448,7 +448,7 @@ pub enum ProtocolInstruction {
   ///
   ///   5. `[]` AldrinSwap pool_info account.
   ///   6. `[]` AldrinSwap pool authority.
-  ///   7. `[writable]` AldrinSwap pool mint account. 
+  ///   7. `[writable]` AldrinSwap pool mint account.
   ///   8. `[writable]` AldrinSwap pool coin vault account.
   ///   9. `[writable]` AldrinSwap pool pc vault account.
   ///   10. `[writable]` AldrinSwap Pool fee account.
@@ -466,14 +466,13 @@ pub enum ProtocolInstruction {
   ///
   ///   6. `[]` AldrinSwap pool_info account.
   ///   7. `[]` AldrinSwap pool authority.
-  ///   8. `[writable]` AldrinSwap pool mint account. 
+  ///   8. `[writable]` AldrinSwap pool mint account.
   ///   9. `[writable]` AldrinSwap pool coin vault account.
   ///   10. `[writable]` AldrinSwap pool pc vault account.
   ///   11. `[writable]` AldrinSwap Pool fee account.
   ///   12. `[]` AldrinSwap Pool curve_key account.
   ///   13. '[]` AldrinSwap program id.
   SwapAldrinSwapOut(SwapOutInstruction),
-
 }
 
 impl ProtocolInstruction {
