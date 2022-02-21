@@ -11,10 +11,7 @@ declare_validated_account_wrapper!(AldrinPool, |account: &AccountInfo| {
   let account_data = account
     .try_borrow_data()
     .map_err(|_| ProtocolError::BorrowAccountDataError)?;
-  if account_data.len() != 472 {
-    return Err(ProtocolError::InvalidCremaSwapAccountData);
-  }
-  if account_data[33] != 1 {
+  if account_data.len() != 474 {
     return Err(ProtocolError::InvalidCremaSwapAccountData);
   }
   Ok(())
@@ -185,5 +182,58 @@ impl<'a, 'b: 'a> AldrinPoolArgs<'a, 'b> {
     } else {
       Ok(Side::Bid)
     }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  use bs58;
+  use solana_sdk::{account::Account, account_info::IntoAccountInfo};
+  use std::str::FromStr;
+
+  #[test]
+  pub fn test_parse_aldrin_pool_info() {
+    let pubkey = Pubkey::from_str("HjZ2zgg4HemPREiJ7he3VWqV6bHV5yhLNkMJahwigbzz").unwrap();
+    let program_id = Pubkey::from_str("CURVGoZn8zycx6FXwwevgBTB2gVvdbGTEpvMJDbgs2t4").unwrap();
+    let account_data = "4VMpc88zcKRkaAdBUkKmF6xLE8umnyqnBceSPeNcGdFdcHMnVMfjmCnJWCG3dVxvE8LzuisKJDY5cRkFwCpfWM7NtKSKc3dw
+aqfLsNsLiR9TZ5gQrptWrv3DKD4GeTc9iUv8ftfEjKARGg4zGhpMzbDWFnsZtL19VU94iCuRfTaspLKEdpAW7qp7KhA3xM4YWBA4d2iPBu1cuQFMiAMocXU4
+9YqBeEhajTLbcckBXsnYgN5KhWmcFtRwgzKSEuG3nnu8HDpx5ze8EW1PzYGg2mCsx4KnMUh7prqW2YKuXnrcwBwfe1PMDKdTxCrY17r9tPmaQ3vR4xv7RJA9
+GdLrPf1C84LpFgUkbJ72DEgL7PyiXF2tuJofzrt8PXxzWHjL3YPcbJyNtaEWEmem4HwMbw6JYing6X422pLnXAb1zeyGnE1oM4s7d7MFysZ1FMfpWgYJvaD7
+11EtACBHwDCPbbcwi588Pdgu1SCHyzCMyX8t8RnShRJGPTwrfDLizxxTQxHTAXRCSMPtJ4RnBYLUwwxCgcPUYRJiFWpV7CuFWMNTxw2rs8skuvYPFh1fj7E2
+dVmzXNyJydYDyCE8ntSuc6NQJAnmNYnpMueCof7KfJWJuxVbkZ2jKyWMe349VHLS28sd1Kon";
+    let mut test_account = Account {
+      lamports: 4189920,
+      data: bs58::decode(account_data.replace("\n", ""))
+        .into_vec()
+        .unwrap(),
+      owner: program_id,
+      executable: false,
+      rent_epoch: 281,
+    };
+    let account_info = (&pubkey, &mut test_account).into_account_info();
+    assert!(*account_info.key == pubkey);
+    let c = AldrinPool::new(&account_info).unwrap();
+    assert_eq!(
+      c.coin_vault().unwrap().to_string(),
+      "7auinu2nWzoYfp8NWjGmHrhZgv5X4T9GCfHGT5TRj8tm".to_string()
+    );
+    assert_eq!(
+      c.coin_mint().unwrap().to_string(),
+      "7zhbkbKpGaUsJW7AD4yyAfGGoy53Xx2H3Ai5BKcwGKHw".to_string()
+    );
+    assert_eq!(
+      c.pc_vault().unwrap().to_string(),
+      "C1j8rurz8aTkjCReDwaHFu6M6j1h8eBEAGrvoMfccwLS".to_string()
+    );
+    assert_eq!(
+      c.pc_mint().unwrap().to_string(),
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string()
+    );
+    assert_eq!(
+      c.pool_mint().unwrap().to_string(),
+      "8CFVFQGtqdnuYgypdJ2YwexRuaFs9KUPSyP6Gd5LtTqL".to_string()
+    );
+    assert_eq!(c.nonce().unwrap(), 252);
   }
 }

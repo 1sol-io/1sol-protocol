@@ -333,7 +333,9 @@ b51Jijykz38oM6KPswC7rAxgTVVgiMu4JvKmVwecn7NCP4iWoM9k8vrYaa8tS3VBZtAMCkVtuwpQeYVZ
 aQukNQ7sfZSCEGj6vKv4fGJNpuDJDZiUXhveEjnbYffrm5Gnfz2kvSSdCgotWNJwcJZkfv5LsMkprfTXodEXXnLqqHj3LM8tNSFu
 CqhMRFKbuHdZt1EfvFWcyxNukAhUXZn5k4MVNQdhQZ5poqMfUa6AzgXBMVAYCoFrsKF9qHbCEHFLNcznS3J3go3xcCnigQtQEctX
 awtxg5yoJmS91iDZt2nTceatH7LN78fA5DxmJDn8kpF3F2";
-    let mut raydium_data = bs58::decode(raydium_data).into_vec().unwrap();
+    let mut raydium_data = bs58::decode(raydium_data.replace("\n", ""))
+      .into_vec()
+      .unwrap();
     let mut raydium_lamports = 6124800u64;
     let raydium_account_info = AccountInfo::new(
       &raydium_pubkey,
@@ -376,21 +378,5 @@ awtxg5yoJmS91iDZt2nTceatH7LN78fA5DxmJDn8kpF3F2";
       raydium_info.serum_dex().unwrap().to_string(),
       "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"
     );
-
-    // let serum_program_id = Pubkey::from_str("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin").unwrap();
-    // let market_pubkey = Pubkey::from_str("teE55QrL4a4QSfydR9dnHF97jgCfptpuigbb53Lo95g").unwrap();
-    // let market_data = "GmH4gu6PYUUKDZqX89gcVw36feKDpPigWxwhfjousKHgERh6FL6GJQSHjNiGNn7uKv6dMmNrovsKNP7miL9GZ9qhkL9XtR1841zKFNG4LUnPNXcJRrumQN7TDZuvHrKnyhZWrsBqFYKEEX1Qr9eSWivWHdCMBGy31yo95k6JQ125kW26jNqD9mGqx7MfPHdZRL3WeB3RxRp68Hgvs4iEn9NYHJCVEF2Lf8vY7hgDgk9YgY7XwoWKPBZ7n8gp2NbzRnTtGs2nhLLUm2XRRY8wFr2t7rEHUwdk9vuxxJakf7vixVmSrouKqzYyXpNZP9Qv1JSUvavZq3mLQCH9uwUBghbvcpU24csgyVZFzYZezWvDUEPgU49C7z5WwYQqpsjGFXfRC2jtrK7CYstV5itGC8v3Bv3bfD4w3MS4bAZaL3UiRYxAnvPf42N8jAkVev8rdprs3vrxUkM6vc3nCDZsMeSik2uVssbEBKye5uqhicdegqLLXQUTJsjqTX19rKiSpU4G42WkC2vNd2a8gW";
-    // let mut market_data = bs58::decode(market_data).into_vec().unwrap();
-    // let mut market_lamports = 3591360u64;
-    // let market_account_info = AccountInfo::new(
-    //   &market_pubkey,
-    //   false,
-    //   true,
-    //   &mut market_lamports,
-    //   &mut market_data[..],
-    //   &serum_program_id,
-    //   false,
-    //   248,
-    // );
   }
 }

@@ -117,24 +117,30 @@ impl Processor {
         accounts,
         ExchangerType::RaydiumSwapSlim,
       ),
-      ProtocolInstruction::SwapCremaSwap(data) => {
-        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::CremaSwap)
+      ProtocolInstruction::SwapCremaFinance(data) => {
+        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::CremaFinance)
       }
-      ProtocolInstruction::SwapCremaSwapIn(data) => {
-        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::CremaSwap)
+      ProtocolInstruction::SwapCremaFinanceIn(data) => {
+        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::CremaFinance)
       }
-      ProtocolInstruction::SwapCremaSwapOut(data) => {
-        Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::CremaSwap)
+      ProtocolInstruction::SwapCremaFinanceOut(data) => {
+        Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::CremaFinance)
       }
-      ProtocolInstruction::SwapAldrinSwap(data) => {
-        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::AldrinSwap)
+      ProtocolInstruction::SwapAldrinExchange(data) => {
+        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::AldrinExchange)
       }
-      ProtocolInstruction::SwapAldrinSwapIn(data) => {
-        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::AldrinSwap)
-      }
-      ProtocolInstruction::SwapAldrinSwapOut(data) => {
-        Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::AldrinSwap)
-      }
+      ProtocolInstruction::SwapAldrinExchangeIn(data) => Self::process_single_step_swap_in(
+        program_id,
+        &data,
+        accounts,
+        ExchangerType::AldrinExchange,
+      ),
+      ProtocolInstruction::SwapAldrinExchangeOut(data) => Self::process_single_step_swap_out(
+        program_id,
+        &data,
+        accounts,
+        ExchangerType::AldrinExchange,
+      ),
     }
   }
 
@@ -294,8 +300,8 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::CremaSwap => todo!(),
-      ExchangerType::AldrinSwap => todo!(),
+      ExchangerType::CremaFinance => todo!(),
+      ExchangerType::AldrinExchange => todo!(),
     }?;
     let from_amount_after = user_args.token_source_account.balance()?;
     let to_amount_after = user_args.token_destination_account.balance()?;
@@ -441,7 +447,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::CremaSwap => Self::process_step_cremaswap(
+      ExchangerType::CremaFinance => Self::process_step_crema_finance(
         program_id,
         data.amount_in.get(),
         u64::MIN + 1,
@@ -451,7 +457,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::AldrinSwap => Self::process_step_aldrinswap(
+      ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
         program_id,
         data.amount_in.get(),
         u64::MIN + 1,
@@ -611,7 +617,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::CremaSwap => Self::process_step_cremaswap(
+      ExchangerType::CremaFinance => Self::process_step_crema_finance(
         program_id,
         amount_in,
         amount_out,
@@ -621,7 +627,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::AldrinSwap => Self::process_step_aldrinswap(
+      ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
         program_id,
         amount_in,
         amount_out,
@@ -807,7 +813,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::CremaSwap => Self::process_step_cremaswap(
+      ExchangerType::CremaFinance => Self::process_step_crema_finance(
         program_id,
         amount_in,
         amount_out,
@@ -817,7 +823,7 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::AldrinSwap => Self::process_step_aldrinswap(
+      ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
         program_id,
         amount_in,
         amount_out,
@@ -1237,7 +1243,7 @@ impl Processor {
 
   /// Step swap in spl-token-swap
   #[allow(clippy::too_many_arguments)]
-  fn process_step_cremaswap<'a, 'b: 'a>(
+  fn process_step_crema_finance<'a, 'b: 'a>(
     program_id: &Pubkey,
     amount_in: u64,
     minimum_amount_out: u64,
@@ -1308,7 +1314,7 @@ impl Processor {
 
   /// Step swap in spl-token-swap
   #[allow(clippy::too_many_arguments)]
-  fn process_step_aldrinswap<'a, 'b: 'a>(
+  fn process_step_aldrin_exchange<'a, 'b: 'a>(
     program_id: &Pubkey,
     amount_in: u64,
     minimum_amount_out: u64,
