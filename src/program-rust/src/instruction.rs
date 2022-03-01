@@ -18,10 +18,12 @@ pub enum ExchangerType {
   RaydiumSwap,
   /// Raydium swap slim
   RaydiumSwapSlim,
-  /// CremaFinance swap
+  /// CremaFinance
   CremaFinance,
-  /// Aldrin swap
+  /// AldrinExchange
   AldrinExchange,
+  /// CropperFinance
+  CropperFinance,
 }
 
 impl ExchangerType {
@@ -34,6 +36,7 @@ impl ExchangerType {
       4 => Some(ExchangerType::RaydiumSwapSlim),
       5 => Some(ExchangerType::CremaFinance),
       6 => Some(ExchangerType::AldrinExchange),
+      7 => Some(ExchangerType::CropperFinance),
       _ => None,
     }
   }
@@ -473,6 +476,59 @@ pub enum ProtocolInstruction {
   ///   12. `[]` AldrinExchange Pool curve_key account.
   ///   13. '[]` AldrinExchange program id.
   SwapAldrinExchangeOut(SwapOutInstruction),
+
+  /// Swap direct by CropperFinance
+  ///
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet)
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[]` Token program id
+  ///   4. `[writable]` fee token account
+  ///
+  ///   5. `[]` CropperFinance swap_info account.
+  ///   6. `[]` CropperFinance pool authority.
+  ///   7. `[]` CropperFinance program state [3hsU1VgsBgBgz5jWiqdw9RfGU6TpWdCmdah1oi4kF3Tq].
+  ///   8. `[writable]` AldrinExchange pool token_a account.
+  ///   9. `[writable]` AldrinExchange pool token_b account.
+  ///   10. `[writable]` AldrinExchange pool mint account.
+  ///   11. `[writable]` AldrinExchange Pool fee account.
+  ///   12. '[]` AldrinExchange program id.
+  SwapCropperFinance(SwapInstruction),
+
+  /// SwapIn by CropperFinance
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` Protocol SwapInfo account
+  ///   4. '[]` Token program id.
+  ///
+  ///   5. `[]` CropperFinance swap_info account.
+  ///   6. `[]` CropperFinance pool authority.
+  ///   7. `[]` CropperFinance program state [3hsU1VgsBgBgz5jWiqdw9RfGU6TpWdCmdah1oi4kF3Tq].
+  ///   8. `[writable]` AldrinExchange pool token_a account.
+  ///   9. `[writable]` AldrinExchange pool token_b account.
+  ///   10. `[writable]` AldrinExchange pool mint account.
+  ///   11. `[writable]` AldrinExchange Pool fee account.
+  ///   12. '[]` AldrinExchange program id.
+  SwapCropperFinanceIn(SwapInInstruction),
+
+  /// SwapOut by CropperFinance
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` SwapInfo account
+  ///   4. '[]` Token program id.
+  ///   5. `[writable]` fee token account.
+  ///
+  ///   6. `[]` CropperFinance swap_info account.
+  ///   7. `[]` CropperFinance pool authority.
+  ///   8. `[]` CropperFinance program state [3hsU1VgsBgBgz5jWiqdw9RfGU6TpWdCmdah1oi4kF3Tq].
+  ///   9. `[writable]` AldrinExchange pool token_a account.
+  ///   10. `[writable]` AldrinExchange pool token_b account.
+  ///   11. `[writable]` AldrinExchange pool mint account.
+  ///   12. `[writable]` AldrinExchange Pool fee account.
+  ///   13. '[]` AldrinExchange program id.
+  SwapCropperFinanceOut(SwapOutInstruction),
 }
 
 impl ProtocolInstruction {
@@ -504,6 +560,9 @@ impl ProtocolInstruction {
       25 => Self::SwapAldrinExchange(SwapInstruction::unpack(rest)?),
       26 => Self::SwapAldrinExchangeIn(SwapInInstruction::unpack(rest)?),
       27 => Self::SwapAldrinExchangeOut(SwapOutInstruction::unpack(rest)?),
+      28 => Self::SwapCropperFinance(SwapInstruction::unpack(rest)?),
+      29 => Self::SwapCropperFinanceIn(SwapInInstruction::unpack(rest)?),
+      30 => Self::SwapCropperFinanceOut(SwapOutInstruction::unpack(rest)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }

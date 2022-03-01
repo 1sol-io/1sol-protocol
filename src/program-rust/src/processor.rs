@@ -4,9 +4,10 @@ use crate::constraints::OWNER_KEY;
 use crate::instruction::SwapOutSlimInstruction;
 use crate::parser::aldrin::AldrinPoolArgs;
 use crate::parser::crema::CremaSwapV1Args;
+use crate::parser::cropper::CropperArgs;
 use crate::spl_token;
 use crate::state::Status;
-use crate::swappers::{aldrin, crema, stable_swap};
+use crate::swappers::{aldrin, crema, cropper, stable_swap};
 use crate::{
   error::ProtocolError,
   instruction::{
@@ -140,6 +141,21 @@ impl Processor {
         &data,
         accounts,
         ExchangerType::AldrinExchange,
+      ),
+      ProtocolInstruction::SwapCropperFinance(data) => {
+        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::CropperFinance)
+      }
+      ProtocolInstruction::SwapCropperFinanceIn(data) => Self::process_single_step_swap_in(
+        program_id,
+        &data,
+        accounts,
+        ExchangerType::CropperFinance,
+      ),
+      ProtocolInstruction::SwapCropperFinanceOut(data) => Self::process_single_step_swap_out(
+        program_id,
+        &data,
+        accounts,
+        ExchangerType::CropperFinance,
       ),
     }
   }
@@ -300,8 +316,36 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::CremaFinance => todo!(),
-      ExchangerType::AldrinExchange => todo!(),
+      ExchangerType::CremaFinance => Self::process_step_crema_finance(
+        program_id,
+        data.amount_in.get(),
+        data.minimum_amount_out.get(),
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        accounts,
+      ),
+      ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
+        program_id,
+        data.amount_in.get(),
+        data.minimum_amount_out.get(),
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        accounts,
+      ),
+      ExchangerType::CropperFinance => Self::process_step_cropper_finance(
+        program_id,
+        data.amount_in.get(),
+        data.minimum_amount_out.get(),
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        accounts,
+      ),
     }?;
     let from_amount_after = user_args.token_source_account.balance()?;
     let to_amount_after = user_args.token_destination_account.balance()?;
@@ -458,6 +502,16 @@ impl Processor {
         other_accounts,
       ),
       ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
+        program_id,
+        data.amount_in.get(),
+        u64::MIN + 1,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::CropperFinance => Self::process_step_cropper_finance(
         program_id,
         data.amount_in.get(),
         u64::MIN + 1,
@@ -628,6 +682,16 @@ impl Processor {
         other_accounts,
       ),
       ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::CropperFinance => Self::process_step_cropper_finance(
         program_id,
         amount_in,
         amount_out,
@@ -824,6 +888,16 @@ impl Processor {
         other_accounts,
       ),
       ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
+        program_id,
+        amount_in,
+        amount_out,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      ExchangerType::CropperFinance => Self::process_step_cropper_finance(
         program_id,
         amount_in,
         amount_out,
@@ -1242,7 +1316,7 @@ impl Processor {
   }
 
   /// Step swap in spl-token-swap
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, unused_variables)]
   fn process_step_crema_finance<'a, 'b: 'a>(
     program_id: &Pubkey,
     amount_in: u64,
@@ -1278,6 +1352,7 @@ impl Processor {
     }
 
     let swap_accounts = vec![
+      swap_args.program_id.clone(),
       swap_args.swap_info.inner().clone(),
       swap_args.authority.clone(),
       source_account_authority.clone(),
@@ -1290,7 +1365,7 @@ impl Processor {
     ];
 
     let instruction = crema::instruction::swap_instruction(
-      program_id,
+      swap_args.program_id.key,
       swap_args.swap_info.inner().key,
       swap_args.authority.key,
       source_account_authority.key,
@@ -1313,7 +1388,7 @@ impl Processor {
   }
 
   /// Step swap in spl-token-swap
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, unused_variables)]
   fn process_step_aldrin_exchange<'a, 'b: 'a>(
     program_id: &Pubkey,
     amount_in: u64,
@@ -1345,19 +1420,8 @@ impl Processor {
       (destination_token_account, source_token_account)
     };
 
-    // let coin_mint = swap_args.pool_info.coin_mint()?;
-    // let pc_mint = swap_args.pool_info.pc_mint()?;
-
-    // let (user_coin_token_acc, user_pc_token_acc, side) =
-    //   if source_token_mint == coin_mint && destination_token_mint == pc_mint {
-    //     (source_token_account, destination_token_account, aldrin::instruction::Side::Ask)
-    //   } else if source_token_mint == pc_mint && destination_token_mint == coin_mint {
-    //     (destination_token_account, source_token_account, aldrin::instruction::Side::Bid)
-    //   } else {
-    //     return Err(ProtocolError::InvalidTokenMint.into());
-    //   };
-
     let swap_accounts = vec![
+      swap_args.program_id.clone(),
       swap_args.pool_info.inner().clone(),
       swap_args.authority.clone(),
       swap_args.pool_mint.inner().clone(),
@@ -1372,7 +1436,7 @@ impl Processor {
     ];
 
     let instruction = aldrin::instruction::swap_instruction(
-      program_id,
+      swap_args.program_id.key,
       swap_args.pool_info.inner().key,
       swap_args.authority.key,
       swap_args.pool_mint.inner().key,
@@ -1390,6 +1454,92 @@ impl Processor {
     )?;
 
     msg!("invoke aldrin-swap swap");
+
+    sol_log_compute_units();
+    invoke(&instruction, &swap_accounts)?;
+    sol_log_compute_units();
+    Ok(())
+  }
+
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments, unused_variables)]
+  fn process_step_cropper_finance<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    amount_in: u64,
+    minimum_amount_out: u64,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    source_account_authority: &'a AccountInfo<'b>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    sol_log_compute_units();
+
+    let swap_args = CropperArgs::with_parsed_args(accounts)?;
+    let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
+
+    msg!(
+      "swap using cropper-finance, amount_in: {}, minimum_amount_out: {}",
+      amount_in,
+      minimum_amount_out,
+    );
+    let pool_token_a_mint = swap_args.swap_info.token_a_mint()?;
+    let pool_token_b_mint = swap_args.swap_info.token_b_mint()?;
+    let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+
+    if swap_args.fee_account.mint()? != destination_token_mint {
+      msg!(
+        "cropper-finance.fee_account.mint is {}, expect {}",
+        swap_args.fee_account.pubkey(),
+        destination_token_mint
+      );
+    }
+
+    let (pool_source_token_account, pool_destination_token_account) =
+      if source_token_mint == pool_token_a_mint && destination_token_mint == pool_token_b_mint {
+        (swap_args.token_a_account, swap_args.token_b_account)
+      } else if source_token_mint == pool_token_b_mint
+        && destination_token_mint == pool_token_a_mint
+      {
+        (swap_args.token_b_account, swap_args.token_a_account)
+      } else {
+        return Err(ProtocolError::InvalidTokenAccount.into());
+      };
+
+    let swap_accounts = vec![
+      swap_args.program_id.clone(),
+      swap_args.swap_info.inner().clone(),
+      swap_args.authority.clone(),
+      source_account_authority.clone(),
+      swap_args.program_state.inner().clone(),
+      source_token_account.inner().clone(),
+      pool_source_token_account.inner().clone(),
+      pool_destination_token_account.inner().clone(),
+      destination_token_account.inner().clone(),
+      swap_args.pool_mint.inner().clone(),
+      swap_args.fee_account.inner().clone(),
+      spl_token_program.inner().clone(),
+    ];
+
+    let instruction = cropper::instruction::swap_instruction(
+      swap_args.program_id.key,
+      spl_token_program.inner().key,
+      swap_args.swap_info.inner().key,
+      swap_args.authority.key,
+      source_account_authority.key,
+      swap_args.program_state.inner().key,
+      source_token_account.inner().key,
+      pool_source_token_account.inner().key,
+      pool_destination_token_account.inner().key,
+      destination_token_account.inner().key,
+      swap_args.pool_mint.inner().key,
+      swap_args.fee_account.inner().key,
+      amount_in,
+      minimum_amount_out,
+    )?;
+
+    msg!("invoke cropper-finance swap");
 
     sol_log_compute_units();
     invoke(&instruction, &swap_accounts)?;

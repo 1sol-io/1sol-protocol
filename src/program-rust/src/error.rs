@@ -118,6 +118,10 @@ pub enum ProtocolError {
   #[error("invalid token mint")]
   InvalidTokenMint,
 
+  /// invalid pool mint
+  #[error("invalid pool mint")]
+  InvalidPoolMint,
+
   /// Init OpenOrders instruction error
   #[error("init open_orders instruction error")]
   InitOpenOrdersInstructionError,
@@ -321,6 +325,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidCremaSwapAccountData => {
         msg!("Error: InvalidCremaSwapAccountData")
+      }
+      ProtocolError::InvalidPoolMint => {
+        msg!("Error: InvalidPoolMint")
       }
     }
   }
