@@ -118,6 +118,10 @@ pub enum ProtocolError {
   #[error("invalid token mint")]
   InvalidTokenMint,
 
+  /// invalid pool mint
+  #[error("invalid pool mint")]
+  InvalidPoolMint,
+
   /// Init OpenOrders instruction error
   #[error("init open_orders instruction error")]
   InitOpenOrdersInstructionError,
@@ -211,6 +215,9 @@ pub enum ProtocolError {
 
   #[error("invalid fee token account")]
   InvalidFeeTokenAccount,
+
+  #[error("invalid crema swap account data")]
+  InvalidCremaSwapAccountData,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -315,6 +322,12 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidOpenOrdersAccount => {
         msg!("Error: InvalidOpenOrdersAccount")
+      }
+      ProtocolError::InvalidCremaSwapAccountData => {
+        msg!("Error: InvalidCremaSwapAccountData")
+      }
+      ProtocolError::InvalidPoolMint => {
+        msg!("Error: InvalidPoolMint")
       }
     }
   }

@@ -1,9 +1,9 @@
 //! OnesolProtocol - DEX Aggregator
 
-mod account_parser;
 mod constraints;
 pub mod error;
 pub mod instruction;
+mod parser;
 pub mod processor;
 mod spl_token;
 pub mod state;
