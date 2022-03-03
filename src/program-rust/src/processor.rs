@@ -1,5 +1,7 @@
 //! Program state processor
 
+use std::cmp;
+
 use crate::constraints::OWNER_KEY;
 use crate::instruction::SwapOutSlimInstruction;
 use crate::parser::aldrin::AldrinPoolArgs;
@@ -933,16 +935,14 @@ impl Processor {
       return Err(ProtocolError::ExceededSlippage.into());
     }
 
-    let fee = to_amount_include_fee
+    let fee1 = to_amount_include_fee
       .checked_sub(data.minimum_amount_out.get())
-      .map(|v| {
-        (v as u128)
-          .checked_mul(25)
-          .unwrap()
-          .checked_div(100)
-          .unwrap_or(0) as u64
-      })
+      .map(|v| (v as u128).checked_div(4).unwrap_or(0) as u64)
       .unwrap_or(0);
+
+    let fee2 = to_amount_include_fee.checked_div(10_000).unwrap_or(0);
+
+    let fee = cmp::min(fee1, fee2);
 
     if fee > 0 {
       Self::token_transfer(
