@@ -218,6 +218,9 @@ pub enum ProtocolError {
 
   #[error("invalid crema swap account data")]
   InvalidCremaSwapAccountData,
+
+  #[error("overflow")]
+  Overflow,
 }
 impl From<ProtocolError> for ProgramError {
   fn from(e: ProtocolError) -> Self {
@@ -328,6 +331,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidPoolMint => {
         msg!("Error: InvalidPoolMint")
+      }
+      ProtocolError::Overflow => {
+        msg!("Error: Overflow")
       }
     }
   }

@@ -30,6 +30,8 @@ use crate::{
   },
 };
 use arrayref::array_refs;
+use solana_program::program_memory::{sol_memcmp, sol_memset};
+use solana_program::pubkey::PUBKEY_BYTES;
 use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
@@ -75,6 +77,10 @@ impl Processor {
       ProtocolInstruction::SetupSwapInfo => {
         msg!("Instruction: SetupSwapInfo");
         Self::process_setup_swap_info(program_id, accounts)
+      }
+      ProtocolInstruction::CloseSwapInfo => {
+        msg!("Instruction: CloseSwapInfo");
+        Self::process_close_swap_info(program_id, accounts)
       }
       ProtocolInstruction::SwapSplTokenSwapIn(data) => {
         msg!("Instruction: Swap SplTokenSwap In");
@@ -162,6 +168,12 @@ impl Processor {
     }
   }
 
+  /// Checks two pubkeys for equality in a computationally cheap way using
+  /// `sol_memcmp`
+  pub fn cmp_pubkeys(a: &Pubkey, b: &Pubkey) -> bool {
+    sol_memcmp(a.as_ref(), b.as_ref(), PUBKEY_BYTES) == 0
+  }
+
   pub fn process_initialize_swap_info(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -211,6 +223,36 @@ impl Processor {
     swap_info.token_account = COption::Some(*token_account.pubkey());
     swap_info.token_latest_amount = 0;
     SwapInfo::pack(swap_info, &mut swap_info_account.data.borrow_mut())?;
+    Ok(())
+  }
+
+  pub fn process_close_swap_info(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    if accounts.len() < 3 {
+      return Err(ProtocolError::InvalidAccountsLength.into());
+    }
+    #[allow(clippy::ptr_offset_with_cast)]
+    #[rustfmt::skip]
+    let (&[
+      ref swap_info_account,
+      ref owner_account,
+      ref destination_account,
+    ], _) = array_refs![accounts, 3;..;];
+    if Self::cmp_pubkeys(swap_info_account.key, destination_account.key) {
+      return Err(ProgramError::InvalidAccountData);
+    }
+    if !Self::cmp_pubkeys(swap_info_account.owner, program_id) {
+      return Err(ProgramError::InvalidAccountData);
+    }
+    let swap_info = SwapInfo::unpack(&swap_info_account.data.borrow())?;
+    if !Self::cmp_pubkeys(&swap_info.owner, owner_account.key) {
+      return Err(ProtocolError::InvalidOwner.into());
+    }
+    let dest_starting_lamports = destination_account.lamports();
+    **destination_account.lamports.borrow_mut() = dest_starting_lamports
+      .checked_add(swap_info_account.lamports())
+      .ok_or(ProtocolError::Overflow)?;
+    **swap_info_account.lamports.borrow_mut() = 0;
+    sol_memset(*swap_info_account.data.borrow_mut(), 0, SwapInfo::LEN);
     Ok(())
   }
 
