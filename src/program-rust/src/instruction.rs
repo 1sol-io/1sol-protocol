@@ -171,9 +171,15 @@ pub enum ProtocolInstruction {
   InitializeSwapInfo,
 
   /// Setup SwapInfo account
-  ///   1. `[writable]` The swapInfo account for initializing
+  ///   1. `[writable]` The swapInfo account for setup
   ///   2. `[]` TokenAccount to set
   SetupSwapInfo,
+
+  /// Close SwapInfo account
+  ///   1. `[writable]` The swapInfo account for close
+  ///   2. `[signer]` owner account
+  ///   3. `[writable]` destination account
+  CloseSwapInfo,
 
   /// Swap the tokens in the pool.
   ///     0. `[writable]` User token SOURCE Account, (coin_wallet)
@@ -563,6 +569,7 @@ impl ProtocolInstruction {
       28 => Self::SwapCropperFinance(SwapInstruction::unpack(rest)?),
       29 => Self::SwapCropperFinanceIn(SwapInInstruction::unpack(rest)?),
       30 => Self::SwapCropperFinanceOut(SwapOutInstruction::unpack(rest)?),
+      31 => Self::CloseSwapInfo,
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }
