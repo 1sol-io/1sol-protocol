@@ -199,7 +199,7 @@ wwNsNLBhoPbzt4ETyew4TPGnb5dAuvQtmLRmHmiMrMv4hjcbn3yBYrtzyfFs774i28HRTL9n9S3DbgYs
 WiQ3pv9mtcjZxcGchY1hw4AGj83tmHeah5EE5cRWrhqemnT9TZLoFHzoVRZBW";
     let mut test_account = Account {
       lamports: 2916240,
-      data: bs58::decode(account_data.replace("\n", ""))
+      data: bs58::decode(account_data.replace('\n', ""))
         .into_vec()
         .unwrap(),
       owner: program_id,
@@ -240,7 +240,7 @@ WiQ3pv9mtcjZxcGchY1hw4AGj83tmHeah5EE5cRWrhqemnT9TZLoFHzoVRZBW";
 y2oAoS9LLHyqQpzfLNY48sxw48PxhFPsyfVVasbjFrygCNJjcoNsQqs9UZ1rJYbAGvuf1vosp3zKkLnxF";
     let mut test_account = Account {
       lamports: 1795680,
-      data: bs58::decode(account_data.replace("\n", ""))
+      data: bs58::decode(account_data.replace('\n', ""))
         .into_vec()
         .unwrap(),
       owner: program_id,

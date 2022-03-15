@@ -45,7 +45,6 @@ use solana_program::{
   rent::Rent,
   sysvar::Sysvar,
 };
-// use std::convert::identity;
 /// Program state handler.
 pub struct Processor {}
 
@@ -1375,7 +1374,7 @@ impl Processor {
     let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
 
     msg!(
-      "swap using crema-swap, amount_in: {}, minimum_amount_out: {}",
+      "swap using crema-finance, amount_in: {}, minimum_amount_out: {}",
       amount_in,
       minimum_amount_out,
     );
@@ -1384,14 +1383,7 @@ impl Processor {
     let destination_token_mint = destination_token_account.mint()?;
 
     let (pool_source_token_acc, pool_destination_token_acc) =
-      swap_args.find_token_pair(&source_token_mint)?;
-
-    if pool_source_token_acc.mint()? != source_token_mint {
-      return Err(ProtocolError::InvalidTokenMint.into());
-    }
-    if pool_destination_token_acc.mint()? != destination_token_mint {
-      return Err(ProtocolError::InvalidTokenMint.into());
-    }
+      swap_args.find_token_pair(&source_token_mint, &destination_token_mint)?;
 
     let swap_accounts = vec![
       swap_args.program_id.clone(),
@@ -1421,7 +1413,7 @@ impl Processor {
       minimum_amount_out,
     )?;
 
-    msg!("invoke crema-swap swap");
+    msg!("invoke crema-finance swap");
 
     sol_log_compute_units();
     invoke(&instruction, &swap_accounts)?;
@@ -1447,20 +1439,26 @@ impl Processor {
     let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
 
     msg!(
-      "swap using aldrin-swap, amount_in: {}, minimum_amount_out: {}",
+      "swap using aldrin-exchanger, amount_in: {}, minimum_amount_out: {}",
       amount_in,
       minimum_amount_out,
     );
 
     let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+    let pool_coin_mint = swap_args.pool_coin_vault.mint()?;
+    let pool_pc_mint = swap_args.pool_pc_vault.mint()?;
 
     let side = swap_args.find_side(&source_token_mint)?;
 
-    let (user_coin_token_acc, user_pc_token_acc) = if side == aldrin::instruction::Side::Ask {
-      (source_token_account, destination_token_account)
-    } else {
-      (destination_token_account, source_token_account)
-    };
+    let (user_coin_token_acc, user_pc_token_acc) =
+      if source_token_mint == pool_coin_mint && destination_token_mint == pool_pc_mint {
+        (source_token_account, destination_token_account)
+      } else if source_token_mint == pool_pc_mint && destination_token_mint == pool_coin_mint {
+        (destination_token_account, source_token_account)
+      } else {
+        return Err(ProtocolError::InvalidTokenMint.into());
+      };
 
     let swap_accounts = vec![
       swap_args.program_id.clone(),
@@ -1470,10 +1468,10 @@ impl Processor {
       swap_args.pool_coin_vault.inner().clone(),
       swap_args.pool_pc_vault.inner().clone(),
       swap_args.fee_account.clone(),
-      source_account_authority.clone(),
+      swap_args.curve_key.clone(),
       user_coin_token_acc.inner().clone(),
       user_pc_token_acc.inner().clone(),
-      swap_args.curve_key.clone(),
+      source_account_authority.clone(),
       spl_token_program.inner().clone(),
     ];
 
@@ -1486,8 +1484,8 @@ impl Processor {
       swap_args.pool_pc_vault.inner().key,
       swap_args.fee_account.key,
       swap_args.curve_key.key,
-      source_token_account.inner().key,
-      destination_token_account.inner().key,
+      user_coin_token_acc.inner().key,
+      user_pc_token_acc.inner().key,
       source_account_authority.key,
       spl_token_program.inner().key,
       amount_in,
@@ -1495,7 +1493,7 @@ impl Processor {
       side,
     )?;
 
-    msg!("invoke aldrin-swap swap");
+    msg!("invoke aldrin-exchanger swap");
 
     sol_log_compute_units();
     invoke(&instruction, &swap_accounts)?;
@@ -1530,7 +1528,7 @@ impl Processor {
     let source_token_mint = source_token_account.mint()?;
     let destination_token_mint = destination_token_account.mint()?;
 
-    if swap_args.fee_account.mint()? != destination_token_mint {
+    if swap_args.fee_account.mint()? != source_token_mint {
       msg!(
         "cropper-finance.fee_account.mint is {}, expect {}",
         swap_args.fee_account.pubkey(),

@@ -133,12 +133,13 @@ impl<'a, 'b: 'a> CremaSwapV1Args<'a, 'b> {
   pub fn find_token_pair(
     &self,
     source_mint_key: &Pubkey,
+    destination_mint_key: &Pubkey,
   ) -> ProtocolResult<(&TokenAccount<'a, 'b>, &TokenAccount<'a, 'b>)> {
     let pool_token_a_mint = self.swap_info.token_a_mint()?;
     let pool_token_b_mint = self.swap_info.token_b_mint()?;
-    if *source_mint_key == pool_token_a_mint {
+    if *source_mint_key == pool_token_a_mint && *destination_mint_key == pool_token_b_mint {
       return Ok((&self.pool_token_a, &self.pool_token_b));
-    } else if *source_mint_key == pool_token_b_mint {
+    } else if *source_mint_key == pool_token_b_mint && *destination_mint_key == pool_token_a_mint {
       return Ok((&self.pool_token_b, &self.pool_token_a));
     }
     Err(ProtocolError::InvalidTokenMint)
@@ -164,7 +165,7 @@ SaE3zxQ9yT9m4eBR3rqsmxsjdpWv7EPezNnqiuKJjWNMrxrEb77ecX6UpsdVn6LWJWKtU67Ug6DjKYGG
 WExa6Gae6euRW6eCcTw5Lf4F7y6PZxD3wek4uMrrHnURYHBkaumuCDiy1z3kbrv9R9RGsYT";
     let mut test_account = Account {
       lamports: 4182960,
-      data: bs58::decode(account_data.replace("\n", ""))
+      data: bs58::decode(account_data.replace('\n', ""))
         .into_vec()
         .unwrap(),
       owner: program_id,

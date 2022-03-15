@@ -117,6 +117,7 @@ fn pack_coption_key(src: &COption<Pubkey>, dst: &mut [u8; 36]) {
     }
   }
 }
+
 fn unpack_coption_key(src: &[u8; 36]) -> Result<COption<Pubkey>, ProgramError> {
   let (tag, body) = array_refs![src, 4, 32];
   match *tag {

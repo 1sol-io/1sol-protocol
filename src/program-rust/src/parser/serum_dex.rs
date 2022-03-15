@@ -200,7 +200,7 @@ J5vyRPyiYz56LqovWnbjjXY76rRPzsbXR3EqYNMyCFjoqxnsH3LLJVYXwT11ggvUery3J8bhDbdvS
 JaacCyTEuaMuWXjJMcsBxW2NQLAPzasX8vu1uTDjqnvCkZKhYcGtCpiLddLQEMXu6mTEE6ZmT73rH
 CLaoGKPSYxuVkunGb4AtkU4mSUfWw3EbKc6s6sEvgi5Ec47RYGdNDMK31jENakYtSAweGRSin1iB7
 G11FU1xhNE"#;
-    let mut data = bs58::decode(market_data.replace("\n", ""))
+    let mut data = bs58::decode(market_data.replace('\n', ""))
       .into_vec()
       .unwrap();
     let pubkey = Pubkey::from_str("9wFFyRfZBsuAha4YcuxcXLKwMxJR43S7fPfQLusDBzvT").unwrap();
@@ -288,7 +288,7 @@ PFGfo6xZEm3351m6b6GRhAxPFkYbateh9s8xcNWVqTLXBSS8jsUx8BeWu2i4SVyxoLVBgJhVGURaX3Rz
 avKkeh6Nn313MU7gefoEda4quR2VaGjJGMqQaoe7SYAd93pZYbaKpEA7pvX5Jk8WQQaQtA6dG7824vAN
 DpQDTnGr57YavqpLq9Yi9HCzDzLSpd27HKWGFbrbr5zHPCu5FccLNHrLHYQkAAobowfiEvBb91Rcc3Dj
 UhNFaoyqJ7aZm14QZS9c9FHesiGEqUFNiCZfkWz"#;
-    let mut data = bs58::decode(market_data.replace("\n", ""))
+    let mut data = bs58::decode(market_data.replace('\n', ""))
       .into_vec()
       .unwrap();
     let pubkey = Pubkey::from_str("HRk9CMrpq7Jn9sh7mzxE8CChHG8dneX9p475QKz4Fsfc").unwrap();

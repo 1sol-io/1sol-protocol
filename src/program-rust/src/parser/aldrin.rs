@@ -204,7 +204,7 @@ GdLrPf1C84LpFgUkbJ72DEgL7PyiXF2tuJofzrt8PXxzWHjL3YPcbJyNtaEWEmem4HwMbw6JYing6X42
 dVmzXNyJydYDyCE8ntSuc6NQJAnmNYnpMueCof7KfJWJuxVbkZ2jKyWMe349VHLS28sd1Kon";
     let mut test_account = Account {
       lamports: 4189920,
-      data: bs58::decode(account_data.replace("\n", ""))
+      data: bs58::decode(account_data.replace('\n', ""))
         .into_vec()
         .unwrap(),
       owner: program_id,

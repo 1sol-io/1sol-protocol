@@ -333,7 +333,7 @@ b51Jijykz38oM6KPswC7rAxgTVVgiMu4JvKmVwecn7NCP4iWoM9k8vrYaa8tS3VBZtAMCkVtuwpQeYVZ
 aQukNQ7sfZSCEGj6vKv4fGJNpuDJDZiUXhveEjnbYffrm5Gnfz2kvSSdCgotWNJwcJZkfv5LsMkprfTXodEXXnLqqHj3LM8tNSFu
 CqhMRFKbuHdZt1EfvFWcyxNukAhUXZn5k4MVNQdhQZ5poqMfUa6AzgXBMVAYCoFrsKF9qHbCEHFLNcznS3J3go3xcCnigQtQEctX
 awtxg5yoJmS91iDZt2nTceatH7LN78fA5DxmJDn8kpF3F2";
-    let mut raydium_data = bs58::decode(raydium_data.replace("\n", ""))
+    let mut raydium_data = bs58::decode(raydium_data.replace('\n', ""))
       .into_vec()
       .unwrap();
     let mut raydium_lamports = 6124800u64;
