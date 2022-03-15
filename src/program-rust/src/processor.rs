@@ -367,7 +367,7 @@ impl Processor {
         &user_args.token_destination_account,
         user_args.source_account_owner,
         &spl_token_program,
-        accounts,
+        other_accounts,
       ),
       ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
         program_id,
@@ -377,7 +377,7 @@ impl Processor {
         &user_args.token_destination_account,
         user_args.source_account_owner,
         &spl_token_program,
-        accounts,
+        other_accounts,
       ),
       ExchangerType::CropperFinance => Self::process_step_cropper_finance(
         program_id,
@@ -387,7 +387,7 @@ impl Processor {
         &user_args.token_destination_account,
         user_args.source_account_owner,
         &spl_token_program,
-        accounts,
+        other_accounts,
       ),
     }?;
     let from_amount_after = user_args.token_source_account.balance()?;
@@ -1144,7 +1144,7 @@ impl Processor {
   /// Step swap in spl-token-swap
   #[allow(clippy::too_many_arguments)]
   fn process_step_stableswap<'a, 'b: 'a>(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     amount_in: u64,
     minimum_amount_out: u64,
     source_token_account: &TokenAccount<'a, 'b>,
@@ -1187,12 +1187,11 @@ impl Processor {
       destination_token_account.inner().clone(),
       swap_args.admin_fee_acc.clone(),
       spl_token_program.inner().clone(),
-      swap_args.clock_sysvar_acc.inner().clone(),
       swap_args.program_acc.clone(),
     ];
 
     let instruction = stable_swap::instruction::swap(
-      program_id,
+      swap_args.program_acc.key,
       spl_token_program.inner().key,
       swap_args.swap_info.inner().key,
       swap_args.authority_acc.key,

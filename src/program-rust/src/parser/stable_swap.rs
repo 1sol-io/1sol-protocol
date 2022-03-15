@@ -2,10 +2,10 @@ use crate::{
   declare_validated_account_wrapper,
   error::{ProtocolError, ProtocolResult},
 };
-use arrayref::array_ref;
+use arrayref::{array_ref, array_refs};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-use super::base::{SysClockAccount, TokenAccount};
+use super::base::TokenAccount;
 
 declare_validated_account_wrapper!(StableSwapInfo, |account: &AccountInfo| {
   let data = account
@@ -90,25 +90,34 @@ pub struct StableSwapArgs<'a, 'b: 'a> {
   pub token_a: TokenAccount<'a, 'b>,
   pub token_b: TokenAccount<'a, 'b>,
   pub admin_fee_acc: &'a AccountInfo<'b>,
-  pub clock_sysvar_acc: SysClockAccount<'a, 'b>,
   pub program_acc: &'a AccountInfo<'b>,
 }
 
 impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
+  const MIN_ACCOUNTS: usize = 6;
+
   pub fn with_parsed_args(accounts: &'a [AccountInfo<'b>]) -> ProtocolResult<Self> {
-    const MIN_ACCOUNTS: usize = 7;
-    if accounts.len() != MIN_ACCOUNTS {
+    if accounts.len() < Self::MIN_ACCOUNTS {
       return Err(ProtocolError::InvalidAccountsLength);
     }
+    #[allow(clippy::ptr_offset_with_cast)]
+    let (fixed_accounts, other_accounts) = array_refs![accounts, 5; ..;];
+
     let &[
       ref swap_info_acc,
       ref authority_acc,
       ref token_a_acc,
       ref token_b_acc,
       ref admin_fee_acc,
-      ref clock_sysvar_acc,
-      ref program_acc,
-    ]: &'a[AccountInfo<'b>; MIN_ACCOUNTS] = array_ref![accounts, 0, MIN_ACCOUNTS];
+      //ref clock_sysvar_acc,
+      //ref program_acc,
+    ]: &'a[AccountInfo<'b>; 5] = array_ref![fixed_accounts, 0, 5];
+
+    let program_acc = if other_accounts.len() == 1 {
+      other_accounts.get(0).unwrap()
+    } else {
+      other_accounts.get(1).unwrap()
+    };
 
     let swap_info = StableSwapInfo::new(swap_info_acc)?;
 
@@ -137,7 +146,6 @@ impl<'a, 'b: 'a> StableSwapArgs<'a, 'b> {
       token_a: TokenAccount::new(token_a_acc)?,
       token_b: TokenAccount::new(token_b_acc)?,
       admin_fee_acc,
-      clock_sysvar_acc: SysClockAccount::new(clock_sysvar_acc)?,
       program_acc,
     })
   }
