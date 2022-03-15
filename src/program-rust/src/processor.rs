@@ -1368,6 +1368,7 @@ impl Processor {
     accounts: &'a [AccountInfo<'b>],
   ) -> ProgramResult {
     sol_log_compute_units();
+    msg!("process_step crema-finance");
 
     let swap_args = CremaSwapV1Args::with_parsed_args(accounts)?;
     let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);

@@ -1,10 +1,11 @@
-use super::base::{validate_authority_pubkey, TokenAccount};
+use super::base::TokenAccount;
 use crate::{
   declare_validated_account_wrapper,
   error::{ProtocolError, ProtocolResult},
+  parser::base::validate_authority_pubkey,
 };
 use arrayref::array_ref;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, pubkey::Pubkey};
 
 declare_validated_account_wrapper!(SwapInfoV1, |account: &AccountInfo| {
   let account_data = account
@@ -20,12 +21,13 @@ declare_validated_account_wrapper!(SwapInfoV1, |account: &AccountInfo| {
 });
 
 impl<'a, 'b: 'a> SwapInfoV1<'a, 'b> {
+  #[allow(dead_code)]
   pub fn nonce(self) -> ProtocolResult<u8> {
     Ok(
       self
         .inner()
         .try_borrow_data()
-        .map_err(|_| ProtocolError::BorrowAccountDataError)?[34],
+        .map_err(|_| ProtocolError::BorrowAccountDataError)?[35],
     )
   }
 
@@ -93,6 +95,13 @@ impl<'a, 'b: 'a> CremaSwapV1Args<'a, 'b> {
     }
     let swap_info = SwapInfoV1::new(swap_info_acc)?;
     if !program_id.executable || *swap_info_acc.owner != *program_id.key {
+      msg!(
+        "program_id: {}, executable: {}, swap_info: {}, owner: {}",
+        program_id.key.to_string(),
+        program_id.executable,
+        swap_info_acc.key.to_string(),
+        swap_info_acc.owner.to_string(),
+      );
       return Err(ProtocolError::InvalidProgramAddress);
     }
 
@@ -191,5 +200,6 @@ WExa6Gae6euRW6eCcTw5Lf4F7y6PZxD3wek4uMrrHnURYHBkaumuCDiy1z3kbrv9R9RGsYT";
       c.token_b_mint().unwrap().to_string(),
       "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string()
     );
+    assert_eq!(c.nonce().unwrap(), 254,);
   }
 }

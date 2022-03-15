@@ -5,7 +5,7 @@ use crate::{
   state::SwapInfo,
 };
 use arrayref::{array_ref, array_refs};
-use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubkey, sysvar};
+use solana_program::{account_info::AccountInfo, msg, program_pack::Pack, pubkey::Pubkey, sysvar};
 
 declare_validated_account_wrapper!(SplTokenProgram, |account: &AccountInfo| {
   if *account.key != spl_token::ID {
@@ -227,8 +227,10 @@ pub fn validate_authority_pubkey(
   base_key: &[u8],
   nonce: u8,
 ) -> Result<(), ProtocolError> {
-  let key = Pubkey::create_program_address(&[base_key, &[nonce]], program_id)
-    .map_err(|_| ProtocolError::InvalidProgramAddress)?;
+  let key = Pubkey::create_program_address(&[base_key, &[nonce]], program_id).map_err(|e| {
+    msg!("create_program_address failed: {}, nonce: {}", e, nonce);
+    ProtocolError::InvalidProgramAddress
+  })?;
   if key != *authority {
     return Err(ProtocolError::InvalidAuthority);
   }
