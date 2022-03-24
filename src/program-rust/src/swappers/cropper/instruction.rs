@@ -72,7 +72,7 @@ pub fn swap_instruction(
     AccountMeta::new_readonly(*swap_pubkey, false),
     AccountMeta::new_readonly(*authority_pubkey, false),
     AccountMeta::new_readonly(*user_transfer_authority_pubkey, true),
-    AccountMeta::new_readonly(*state_pubkey, true),
+    AccountMeta::new_readonly(*state_pubkey, false),
     AccountMeta::new(*source_pubkey, false),
     AccountMeta::new(*swap_source_pubkey, false),
     AccountMeta::new(*swap_destination_pubkey, false),
