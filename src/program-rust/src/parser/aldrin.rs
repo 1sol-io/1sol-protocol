@@ -2,7 +2,7 @@ use super::base::{validate_authority_pubkey, TokenAccount, TokenMint};
 use crate::{
   declare_validated_account_wrapper,
   error::{ProtocolError, ProtocolResult},
-  swappers::aldrin::instruction::Side,
+  exchanger::aldrin::instruction::Side,
 };
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, msg, pubkey::Pubkey};

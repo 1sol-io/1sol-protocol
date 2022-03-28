@@ -1,7 +1,7 @@
-use crate::swappers::serum_dex::matching::Side as DexSide;
 use crate::{
   declare_validated_account_wrapper,
   error::{ProtocolError, ProtocolResult},
+  exchanger::serum_dex::matching::Side as DexSide,
   parser::base::TokenAccount,
 };
 use arrayref::{array_ref, array_refs};

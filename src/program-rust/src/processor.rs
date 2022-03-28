@@ -2,36 +2,32 @@
 
 use std::cmp;
 
-use crate::constraints::OWNER_KEY;
-use crate::instruction::SwapOutSlimInstruction;
-use crate::parser::aldrin::AldrinPoolArgs;
-use crate::parser::crema::CremaSwapV1Args;
-use crate::parser::cropper::CropperArgs;
-use crate::spl_token;
-use crate::state::Status;
-use crate::swappers::{aldrin, crema, cropper, stable_swap};
 use crate::{
+  constraints::OWNER_KEY,
   error::ProtocolError,
+  exchanger::{
+    aldrin, crema, cropper, raydium,
+    serum_dex::{self, matching::Side as DexSide},
+    spl_token_swap, stable_swap,
+  },
   instruction::{
     ExchangerType, ProtocolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
+    SwapOutSlimInstruction,
   },
   parser::{
+    aldrin::AldrinPoolArgs,
     base::{SplTokenProgram, SwapInfoArgs, TokenAccount, UserArgs},
+    crema::CremaSwapV1Args,
+    cropper::CropperArgs,
     raydium::{RaydiumSwapArgs, RaydiumSwapArgs2},
     serum_dex::SerumDexArgs,
     spl_token_swap::SplTokenSwapArgs,
     stable_swap::StableSwapArgs,
   },
-  state::SwapInfo,
-  swappers::{
-    raydium,
-    serum_dex::{self, matching::Side as DexSide},
-    spl_token_swap,
-  },
+  spl_token,
+  state::{Status, SwapInfo},
 };
 use arrayref::array_refs;
-use solana_program::program_memory::{sol_memcmp, sol_memset};
-use solana_program::pubkey::PUBKEY_BYTES;
 use solana_program::{
   account_info::AccountInfo,
   entrypoint::ProgramResult,
@@ -39,9 +35,10 @@ use solana_program::{
   msg,
   program::{invoke, invoke_signed},
   program_error::ProgramError,
+  program_memory::{sol_memcmp, sol_memset},
   program_option::COption,
   program_pack::Pack,
-  pubkey::Pubkey,
+  pubkey::{Pubkey, PUBKEY_BYTES},
   rent::Rent,
   sysvar::Sysvar,
 };
