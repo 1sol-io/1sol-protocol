@@ -219,8 +219,8 @@ mod test {
       sqrt_price_limit: 79226673515401279992447579055,
       exact_input: true,
       a_to_b: false,
-    }).pack();
+    })
+    .pack();
     assert_eq!(data1, data2)
   }
 }
-

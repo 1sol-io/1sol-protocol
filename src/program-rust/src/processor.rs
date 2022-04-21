@@ -8,11 +8,10 @@ use crate::{
   exchanger::{
     aldrin, crema, cropper, raydium,
     serum_dex::{self, matching::Side as DexSide},
-    spl_token_swap, stable_swap,
+    spl_token_swap, stable_swap, whirlpool,
   },
   instruction::{
     ExchangerType, ProtocolInstruction, SwapInInstruction, SwapInstruction, SwapOutInstruction,
-    SwapOutSlimInstruction,
   },
   parser::{
     aldrin::AldrinPoolArgs,
@@ -23,6 +22,7 @@ use crate::{
     serum_dex::SerumDexArgs,
     spl_token_swap::SplTokenSwapArgs,
     stable_swap::StableSwapArgs,
+    whirlpool::WhirlpoolArgs,
   },
   spl_token,
   state::{Status, SwapInfo},
@@ -161,6 +161,15 @@ impl Processor {
         accounts,
         ExchangerType::CropperFinance,
       ),
+      ProtocolInstruction::SwapWhirlpool(data) => {
+        Self::process_single_step_swap(program_id, &data, accounts, ExchangerType::Whirlpool)
+      }
+      ProtocolInstruction::SwapInWhirlpool(data) => {
+        Self::process_single_step_swap_in(program_id, &data, accounts, ExchangerType::Whirlpool)
+      }
+      ProtocolInstruction::SwapOutWhirlpool(data) => {
+        Self::process_single_step_swap_out(program_id, &data, accounts, ExchangerType::Whirlpool)
+      }
     }
   }
 
@@ -386,6 +395,19 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
+      ExchangerType::Whirlpool => Self::process_step_whirlpool(
+        program_id,
+        data.amount_in.get(),
+        data.minimum_amount_out.get(),
+        data
+          .sqrt_price_limit
+          .ok_or(ProtocolError::InvalidInstruction)?,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
     }?;
     let from_amount_after = user_args.token_source_account.balance()?;
     let to_amount_after = user_args.token_destination_account.balance()?;
@@ -561,6 +583,19 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
+      ExchangerType::Whirlpool => Self::process_step_whirlpool(
+        program_id,
+        data.amount_in.get(),
+        u64::MIN + 1,
+        data
+          .sqrt_price_limit
+          .ok_or(ProtocolError::InvalidInstruction)?,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
     }?;
 
     let from_amount_after = user_args.token_source_account.balance()?;
@@ -691,16 +726,6 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::RaydiumSwapSlim => Self::process_step_raydium_slim(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
       ExchangerType::SerumDex => Self::process_step_serumdex(
         program_id,
         amount_in,
@@ -741,6 +766,22 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
+      ExchangerType::Whirlpool => Self::process_step_whirlpool(
+        program_id,
+        amount_in,
+        amount_out,
+        data
+          .sqrt_price_limit
+          .ok_or(ProtocolError::InvalidInstruction)?,
+        &user_args.token_source_account,
+        &user_args.token_destination_account,
+        user_args.source_account_owner,
+        &spl_token_program,
+        other_accounts,
+      ),
+      _ => {
+        return Err(ProtocolError::InvalidInstruction.into());
+      }
     }?;
 
     let from_amount_after = user_args.token_source_account.balance()?;
@@ -795,7 +836,7 @@ impl Processor {
 
   pub fn process_single_step_swap_out_slim(
     program_id: &Pubkey,
-    data: &SwapOutSlimInstruction,
+    data: &SwapOutInstruction,
     accounts: &[AccountInfo],
     exchanger: ExchangerType,
   ) -> ProgramResult {
@@ -867,36 +908,6 @@ impl Processor {
     );
 
     match exchanger {
-      ExchangerType::SplTokenSwap => Self::process_step_tokenswap(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
-      ExchangerType::StableSwap => Self::process_step_stableswap(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
-      ExchangerType::RaydiumSwap => Self::process_step_raydium(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
       ExchangerType::RaydiumSwapSlim => Self::process_step_raydium_slim(
         program_id,
         amount_in,
@@ -907,46 +918,9 @@ impl Processor {
         &spl_token_program,
         other_accounts,
       ),
-      ExchangerType::SerumDex => Self::process_step_serumdex(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
-      ExchangerType::CremaFinance => Self::process_step_crema_finance(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
-      ExchangerType::AldrinExchange => Self::process_step_aldrin_exchange(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
-      ExchangerType::CropperFinance => Self::process_step_cropper_finance(
-        program_id,
-        amount_in,
-        amount_out,
-        &user_args.token_source_account,
-        &user_args.token_destination_account,
-        user_args.source_account_owner,
-        &spl_token_program,
-        other_accounts,
-      ),
+      _ => {
+        return Err(ProtocolError::InvalidInstruction.into());
+      }
     }?;
 
     let from_amount_after = user_args.token_source_account.balance()?;
@@ -1577,6 +1551,78 @@ impl Processor {
     )?;
 
     msg!("invoke cropper-finance swap");
+
+    sol_log_compute_units();
+    invoke(&instruction, &swap_accounts)?;
+    sol_log_compute_units();
+    Ok(())
+  }
+
+  /// Step swap in spl-token-swap
+  #[allow(clippy::too_many_arguments, unused_variables)]
+  fn process_step_whirlpool<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    amount_in: u64,
+    minimum_amount_out: u64,
+    sqrt_price_limit: u128,
+    source_token_account: &TokenAccount<'a, 'b>,
+    destination_token_account: &TokenAccount<'a, 'b>,
+    source_account_authority: &'a AccountInfo<'b>,
+    spl_token_program: &SplTokenProgram<'a, 'b>,
+    accounts: &'a [AccountInfo<'b>],
+  ) -> ProgramResult {
+    sol_log_compute_units();
+
+    let pool_args = WhirlpoolArgs::with_parsed_args(accounts)?;
+    let amount_in = Self::get_amount_in(amount_in, source_token_account.balance()?);
+
+    msg!(
+      "swap using whirlpool, amount_in: {}, minimum_amount_out: {}",
+      amount_in,
+      minimum_amount_out,
+    );
+    let pool_token_a_mint = pool_args.pool.token_a_mint()?;
+    let pool_token_b_mint = pool_args.pool.token_b_mint()?;
+    let source_token_mint = source_token_account.mint()?;
+    let destination_token_mint = destination_token_account.mint()?;
+
+    let (user_token_a_account, user_token_b_account, a_to_b) =
+      if source_token_mint == pool_token_a_mint && destination_token_mint == pool_token_b_mint {
+        (source_token_account, destination_token_account, true)
+      } else if source_token_mint == pool_token_b_mint
+        && destination_token_mint == pool_token_a_mint
+      {
+        (destination_token_account, source_token_account, false)
+      } else {
+        return Err(ProtocolError::InvalidTokenAccount.into());
+      };
+
+    let swap_accounts = vec![
+      pool_args.program_id.clone(),
+      spl_token_program.inner().clone(),
+    ];
+
+    let instruction = whirlpool::instruction::swap(
+      pool_args.program_id.key,
+      spl_token_program.inner().key,
+      source_account_authority.key,
+      pool_args.pool.pubkey(),
+      user_token_a_account.inner().key,
+      pool_args.token_a_account.pubkey(),
+      user_token_b_account.inner().key,
+      pool_args.token_b_account.pubkey(),
+      pool_args.tick_array_0.key,
+      pool_args.tick_array_1.key,
+      pool_args.tick_array_2.key,
+      pool_args.oracle.key,
+      amount_in,
+      minimum_amount_out,
+      1,
+      true,
+      a_to_b,
+    );
+
+    msg!("invoke whirlpool swap");
 
     sol_log_compute_units();
     invoke(&instruction, &swap_accounts)?;
