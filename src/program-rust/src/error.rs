@@ -219,6 +219,9 @@ pub enum ProtocolError {
   #[error("invalid crema swap account data")]
   InvalidCremaSwapAccountData,
 
+  #[error("invalid whirlpool info account data")]
+  InvalidWhirlpoolInfoAccountData,
+
   #[error("overflow")]
   Overflow,
 }
@@ -331,6 +334,9 @@ impl PrintProgramError for ProtocolError {
       }
       ProtocolError::InvalidPoolMint => {
         msg!("Error: InvalidPoolMint")
+      }
+      ProtocolError::InvalidWhirlpoolInfoAccountData => {
+        msg!("Error: InvalidWhirlpoolInfoAccountData")
       }
       ProtocolError::Overflow => {
         msg!("Error: Overflow")

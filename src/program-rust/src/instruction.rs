@@ -1,6 +1,7 @@
 //! Instruction types
+#![allow(clippy::ptr_offset_with_cast)]
 
-use crate::error::ProtocolError;
+use crate::{error::ProtocolError, parser::whirlpool};
 use arrayref::{array_ref, array_refs};
 use solana_program::program_error::ProgramError;
 use std::num::NonZeroU64;
@@ -24,6 +25,8 @@ pub enum ExchangerType {
   AldrinExchange,
   /// CropperFinance
   CropperFinance,
+  /// Whirlpool
+  Whirlpool,
 }
 
 impl ExchangerType {
@@ -37,6 +40,7 @@ impl ExchangerType {
       5 => Some(ExchangerType::CremaFinance),
       6 => Some(ExchangerType::AldrinExchange),
       7 => Some(ExchangerType::CropperFinance),
+      8 => Some(ExchangerType::Whirlpool),
       _ => None,
     }
   }
@@ -58,6 +62,8 @@ pub struct SwapInstruction {
   pub expect_amount_out: NonZeroU64,
   /// Minimum amount of DESTINATION token to output, prevents excessive slippage
   pub minimum_amount_out: NonZeroU64,
+  /// sqrt_price_limit
+  pub sqrt_price_limit: Option<u128>,
 }
 
 /// Swap instruction data
@@ -65,6 +71,8 @@ pub struct SwapInstruction {
 pub struct SwapInInstruction {
   /// amount of tokens to swap
   pub amount_in: NonZeroU64,
+  /// sqrt_price_limit
+  pub sqrt_price_limit: Option<u128>,
 }
 
 /// Swap instruction data
@@ -74,13 +82,8 @@ pub struct SwapOutInstruction {
   pub expect_amount_out: NonZeroU64,
   /// Minimum amount of DESTINATION token to output, prevents excessive slippage
   pub minimum_amount_out: NonZeroU64,
-}
-
-/// Swap instruction data
-#[derive(Clone, Debug, PartialEq)]
-pub struct SwapOutSlimInstruction {
-  /// Minimum amount of DESTINATION token to output, prevents excessive slippage
-  pub minimum_amount_out: NonZeroU64,
+  /// sqrt_price_limit
+  pub sqrt_price_limit: Option<u128>,
 }
 
 // Instructions supported by the 1sol protocol program
@@ -381,7 +384,7 @@ pub enum ProtocolInstruction {
   ///     17. `[writable]` raydium pc_vault account.
   ///     18. `[]` raydium vault_signer account.
   ///     19. `[]` raydium program id.
-  SwapRaydiumOut2(SwapOutSlimInstruction),
+  SwapRaydiumOut2(SwapOutInstruction),
 
   /// Swap direct by CremaFinance
   ///
@@ -535,6 +538,61 @@ pub enum ProtocolInstruction {
   ///   12. `[writable]` AldrinExchange Pool fee account.
   ///   13. '[]` AldrinExchange program id.
   SwapCropperFinanceOut(SwapOutInstruction),
+
+  /// Swap direct by Whirlpool
+  ///
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet)
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[]` Token program id
+  ///   4. `[writable]` fee token account
+  ///
+  ///   5. `[writable]` Whirlpool pool account.
+  ///   6. `[writable]` Whirlpool token vault a.
+  ///   7. `[writable]` Whirlpool token vault b.
+  ///   8. `[writable]` Whirlpool TickArray 0.
+  ///   9. `[writable]` Whirlpool TickArray 1.
+  ///   10. `[writable]` Whirlpool TickArray 2.
+  ///   11. `[]` Whirlpool Oracle Account.
+  ///   12. '[]` Whirlpool program id.
+  SwapWhirlpool(SwapInstruction),
+
+  /// SwapIn by Whirlpool
+  ///
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` Protocol SwapInfo account
+  ///   4. '[]` Token program id.
+  ///
+  ///   5. `[writable]` Whirlpool pool account.
+  ///   6. `[writable]` Whirlpool token vault a.
+  ///   7. `[writable]` Whirlpool token vault b.
+  ///   8. `[writable]` Whirlpool TickArray 0.
+  ///   9. `[writable]` Whirlpool TickArray 1.
+  ///   10. `[writable]` Whirlpool TickArray 2.
+  ///   11. `[]` Whirlpool Oracle Account.
+  ///   12. '[]` Whirlpool program id.
+  SwapInWhirlpool(SwapInInstruction),
+
+  /// SwapOut by Whirlpool
+  ///
+  ///   0. `[writable]` User token SOURCE Account, (coin_wallet).
+  ///   1. `[writable]` User token DESTINATION Account to swap INTO. Must be the DESTINATION token.
+  ///   2. `[signer]` User token SOURCE account OWNER (or Authority) account.
+  ///   3. '[writable]` SwapInfo account
+  ///   4. '[]` Token program id.
+  ///   5. `[writable]` fee token account.
+  ///
+  ///   6. `[writable]` Whirlpool pool account.
+  ///   7. `[writable]` Whirlpool token vault a.
+  ///   8. `[writable]` Whirlpool token vault b.
+  ///   9. `[writable]` Whirlpool TickArray 0.
+  ///   10. `[writable]` Whirlpool TickArray 1.
+  ///   11. `[writable]` Whirlpool TickArray 2.
+  ///   12. `[]` Whirlpool Oracle Account.
+  ///   13. '[]` Whirlpool program id.
+  SwapOutWhirlpool(SwapOutInstruction),
 }
 
 impl ProtocolInstruction {
@@ -542,51 +600,90 @@ impl ProtocolInstruction {
   pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
     let (&tag, rest) = input.split_first().ok_or(ProtocolError::InvalidInput)?;
     Ok(match tag {
-      3 => Self::SwapSplTokenSwap(SwapInstruction::unpack(rest)?),
-      4 => Self::SwapSerumDex(SwapInstruction::unpack(rest)?),
+      3 => Self::SwapSplTokenSwap(SwapInstruction::unpack(rest, ExchangerType::SplTokenSwap)?),
+      4 => Self::SwapSerumDex(SwapInstruction::unpack(rest, ExchangerType::SerumDex)?),
       5 => return Err(ProtocolError::InvalidInstruction.into()),
-      6 => Self::SwapStableSwap(SwapInstruction::unpack(rest)?),
+      6 => Self::SwapStableSwap(SwapInstruction::unpack(rest, ExchangerType::StableSwap)?),
       8 => return Err(ProtocolError::InvalidInstruction.into()),
-      9 => Self::SwapRaydiumSwap(SwapInstruction::unpack(rest)?),
+      9 => Self::SwapRaydiumSwap(SwapInstruction::unpack(rest, ExchangerType::RaydiumSwap)?),
       10 => Self::InitializeSwapInfo,
       11 => Self::SetupSwapInfo,
-      12 => Self::SwapSplTokenSwapIn(SwapInInstruction::unpack(rest)?),
-      13 => Self::SwapSplTokenSwapOut(SwapOutInstruction::unpack(rest)?),
-      14 => Self::SwapSerumDexIn(SwapInInstruction::unpack(rest)?),
-      15 => Self::SwapSerumDexOut(SwapOutInstruction::unpack(rest)?),
-      16 => Self::SwapStableSwapIn(SwapInInstruction::unpack(rest)?),
-      17 => Self::SwapStableSwapOut(SwapOutInstruction::unpack(rest)?),
-      18 => Self::SwapRaydiumIn(SwapInInstruction::unpack(rest)?),
-      19 => Self::SwapRaydiumOut(SwapOutInstruction::unpack(rest)?),
-      20 => Self::SwapRaydiumIn2(SwapInInstruction::unpack(rest)?),
-      21 => Self::SwapRaydiumOut2(SwapOutSlimInstruction::unpack(rest)?),
-      22 => Self::SwapCremaFinance(SwapInstruction::unpack(rest)?),
-      23 => Self::SwapCremaFinanceIn(SwapInInstruction::unpack(rest)?),
-      24 => Self::SwapCremaFinanceOut(SwapOutInstruction::unpack(rest)?),
-      25 => Self::SwapAldrinExchange(SwapInstruction::unpack(rest)?),
-      26 => Self::SwapAldrinExchangeIn(SwapInInstruction::unpack(rest)?),
-      27 => Self::SwapAldrinExchangeOut(SwapOutInstruction::unpack(rest)?),
-      28 => Self::SwapCropperFinance(SwapInstruction::unpack(rest)?),
-      29 => Self::SwapCropperFinanceIn(SwapInInstruction::unpack(rest)?),
-      30 => Self::SwapCropperFinanceOut(SwapOutInstruction::unpack(rest)?),
+      12 => Self::SwapSplTokenSwapIn(SwapInInstruction::unpack(
+        rest,
+        ExchangerType::SplTokenSwap,
+      )?),
+      13 => Self::SwapSplTokenSwapOut(SwapOutInstruction::unpack(
+        rest,
+        ExchangerType::SplTokenSwap,
+      )?),
+      14 => Self::SwapSerumDexIn(SwapInInstruction::unpack(rest, ExchangerType::SerumDex)?),
+      15 => Self::SwapSerumDexOut(SwapOutInstruction::unpack(rest, ExchangerType::SerumDex)?),
+      16 => Self::SwapStableSwapIn(SwapInInstruction::unpack(rest, ExchangerType::StableSwap)?),
+      17 => Self::SwapStableSwapOut(SwapOutInstruction::unpack(rest, ExchangerType::StableSwap)?),
+      // Self::SwapRaydiumIn(SwapInInstruction::unpack(rest)?)
+      18 => return Err(ProtocolError::InvalidInstruction.into()),
+      //, Self::SwapRaydiumOut(SwapOutInstruction::unpack(rest)?),
+      19 => return Err(ProtocolError::InvalidInstruction.into()),
+      20 => Self::SwapRaydiumIn2(SwapInInstruction::unpack(rest, ExchangerType::RaydiumSwap)?),
+      21 => Self::SwapRaydiumOut2(SwapOutInstruction::unpack(
+        rest,
+        ExchangerType::RaydiumSwap,
+      )?),
+      22 => Self::SwapCremaFinance(SwapInstruction::unpack(rest, ExchangerType::CremaFinance)?),
+      23 => Self::SwapCremaFinanceIn(SwapInInstruction::unpack(
+        rest,
+        ExchangerType::CremaFinance,
+      )?),
+      24 => Self::SwapCremaFinanceOut(SwapOutInstruction::unpack(
+        rest,
+        ExchangerType::CremaFinance,
+      )?),
+      25 => Self::SwapAldrinExchange(SwapInstruction::unpack(
+        rest,
+        ExchangerType::AldrinExchange,
+      )?),
+      26 => Self::SwapAldrinExchangeIn(SwapInInstruction::unpack(
+        rest,
+        ExchangerType::AldrinExchange,
+      )?),
+      27 => Self::SwapAldrinExchangeOut(SwapOutInstruction::unpack(
+        rest,
+        ExchangerType::AldrinExchange,
+      )?),
+      28 => Self::SwapCropperFinance(SwapInstruction::unpack(
+        rest,
+        ExchangerType::CropperFinance,
+      )?),
+      29 => Self::SwapCropperFinanceIn(SwapInInstruction::unpack(
+        rest,
+        ExchangerType::CropperFinance,
+      )?),
+      30 => Self::SwapCropperFinanceOut(SwapOutInstruction::unpack(
+        rest,
+        ExchangerType::CropperFinance,
+      )?),
       31 => Self::CloseSwapInfo,
+      32 => Self::SwapWhirlpool(SwapInstruction::unpack(rest, ExchangerType::Whirlpool)?),
+      33 => Self::SwapInWhirlpool(SwapInInstruction::unpack(rest, ExchangerType::Whirlpool)?),
+      34 => Self::SwapOutWhirlpool(SwapOutInstruction::unpack(rest, ExchangerType::Whirlpool)?),
       _ => return Err(ProtocolError::InvalidInstruction.into()),
     })
   }
 }
 
 impl SwapInstruction {
-  const DATA_LEN: usize = 24;
+  const MIN_DATA_LEN: usize = 24;
 
   // size = 1 or 3
   // flag[0/1], [account_size], [amount_in], [minium_amount_out]
-  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    if input.len() < SwapInstruction::DATA_LEN {
+  fn unpack(input: &[u8], exchanger_type: ExchangerType) -> Result<Self, ProgramError> {
+    if input.len() < SwapInstruction::MIN_DATA_LEN {
       return Err(ProtocolError::InvalidInput.into());
     }
-    let arr_data = array_ref![input, 0, SwapInstruction::DATA_LEN];
+    let (fixed_arr, other_arr) = array_refs![input, SwapInstruction::MIN_DATA_LEN; ..;];
     let (&amount_in_arr, &expect_amount_out_arr, &minimum_amount_out_arr) =
-      array_refs![arr_data, 8, 8, 8];
+      array_refs![fixed_arr, 8, 8, 8];
+
     let amount_in =
       NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(ProtocolError::InvalidInput)?;
     let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
@@ -596,66 +693,87 @@ impl SwapInstruction {
     if expect_amount_out.get() < minimum_amount_out.get() || expect_amount_out.get() == 0 {
       return Err(ProtocolError::InvalidExpectAmountOut.into());
     }
+    let sqrt_price_limit = match exchanger_type {
+      ExchangerType::Whirlpool => Some(whirlpool::WhirlpoolArgs::unpack_input(other_arr)?),
+      _ => None,
+    };
     Ok(SwapInstruction {
       amount_in,
       expect_amount_out,
       minimum_amount_out,
+      sqrt_price_limit,
     })
   }
 }
 
 impl SwapInInstruction {
-  const DATA_LEN: usize = 8;
+  const MIN_DATA_LEN: usize = 8;
 
   // size = 1 or 3
   // flag[0/1], [account_size], [amount_in], [minium_amount_out]
-  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    if input.len() < SwapInInstruction::DATA_LEN {
+  fn unpack(input: &[u8], exchanger_type: ExchangerType) -> Result<Self, ProgramError> {
+    if input.len() < SwapInInstruction::MIN_DATA_LEN {
       return Err(ProtocolError::InvalidInput.into());
     }
-    let &amount_in_arr = array_ref![input, 0, SwapInInstruction::DATA_LEN];
+    let (fixed_arr, other_arr) = array_refs![input, SwapInInstruction::MIN_DATA_LEN; ..;];
+    let &amount_in_arr = array_ref![fixed_arr, 0, 8];
     let amount_in =
       NonZeroU64::new(u64::from_le_bytes(amount_in_arr)).ok_or(ProtocolError::InvalidInput)?;
-    Ok(Self { amount_in })
-  }
-}
 
-impl SwapOutInstruction {
-  const DATA_LEN: usize = 16;
-
-  // size = 1 or 3
-  // flag[0/1], [account_size], [amount_in], [minium_amount_out]
-  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    if input.len() < SwapOutInstruction::DATA_LEN {
-      return Err(ProtocolError::InvalidInput.into());
-    }
-    let arr_data = array_ref![input, 0, SwapOutInstruction::DATA_LEN];
-    let (&expect_amount_out_arr, &minimum_amount_out_arr) = array_refs![arr_data, 8, 8];
-    let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
-      .ok_or(ProtocolError::InvalidInput)?;
-    let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
-      .ok_or(ProtocolError::InvalidInput)?;
-    if expect_amount_out.get() < minimum_amount_out.get() || expect_amount_out.get() == 0 {
-      return Err(ProtocolError::InvalidExpectAmountOut.into());
-    }
+    let sqrt_price_limit = match exchanger_type {
+      ExchangerType::Whirlpool => Some(whirlpool::WhirlpoolArgs::unpack_input(other_arr)?),
+      _ => None,
+    };
     Ok(Self {
-      expect_amount_out,
-      minimum_amount_out,
+      amount_in,
+      sqrt_price_limit,
     })
   }
 }
 
-impl SwapOutSlimInstruction {
-  const DATA_LEN: usize = 8;
+impl SwapOutInstruction {
+  // size = 1 or 3
+  // flag[0/1], [account_size], [amount_in], [minium_amount_out]
+  fn unpack(input: &[u8], exchanger_type: ExchangerType) -> Result<Self, ProgramError> {
+    let (expect_amount_out, minimum_amount_out, other_arr) = match exchanger_type {
+      ExchangerType::RaydiumSwapSlim => {
+        if input.len() < 8 {
+          return Err(ProtocolError::InvalidInput.into());
+        }
+        let (fixed_arr, other_arr) = array_refs![input, 8; ..;];
+        let &minimum_amount_out = array_ref![fixed_arr, 0, 8];
+        let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out))
+          .ok_or(ProtocolError::InvalidInput)?;
+        (minimum_amount_out, minimum_amount_out, other_arr)
+      }
+      _ => {
+        if input.len() < 16 {
+          return Err(ProtocolError::InvalidInput.into());
+        }
+        let (fixed_arr, other_arr) = array_refs![input, 16; ..;];
+        let (&expect_amount_out_arr, &minimum_amount_out_arr) = array_refs![fixed_arr, 8, 8];
+        let expect_amount_out = NonZeroU64::new(u64::from_le_bytes(expect_amount_out_arr))
+          .ok_or(ProtocolError::InvalidInput)?;
+        let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
+          .ok_or(ProtocolError::InvalidInput)?;
+        if expect_amount_out.get() < minimum_amount_out.get() || expect_amount_out.get() == 0 {
+          return Err(ProtocolError::InvalidExpectAmountOut.into());
+        }
+        (expect_amount_out, minimum_amount_out, other_arr)
+      }
+    };
 
-  fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-    if input.len() < SwapOutSlimInstruction::DATA_LEN {
-      return Err(ProtocolError::InvalidInput.into());
-    }
-    let &minimum_amount_out_arr = array_ref![input, 0, SwapOutSlimInstruction::DATA_LEN];
-    let minimum_amount_out = NonZeroU64::new(u64::from_le_bytes(minimum_amount_out_arr))
-      .ok_or(ProtocolError::InvalidInput)?;
-    Ok(Self { minimum_amount_out })
+    let sqrt_price_limit = if exchanger_type == ExchangerType::Whirlpool {
+      Some(whirlpool::WhirlpoolArgs::unpack_input(other_arr)?)
+    } else {
+      None
+    };
+
+    Ok(Self {
+      expect_amount_out,
+      minimum_amount_out,
+      sqrt_price_limit,
+    })
   }
 }
 
@@ -668,15 +786,16 @@ mod tests {
     let amount_in = 120000u64;
     let minimum_amount_out = 1080222u64;
     let expect_amount_out = 1090000u64;
-    let mut buf = Vec::with_capacity(SwapInstruction::DATA_LEN);
+    let mut buf = Vec::with_capacity(SwapInstruction::MIN_DATA_LEN);
     buf.extend_from_slice(&amount_in.to_le_bytes());
     buf.extend_from_slice(&expect_amount_out.to_le_bytes());
     buf.extend_from_slice(&minimum_amount_out.to_le_bytes());
     // buf.insert(, element)
 
-    let i = SwapInstruction::unpack(&buf[..]).unwrap();
+    let i = SwapInstruction::unpack(&buf[..], ExchangerType::SplTokenSwap).unwrap();
     assert_eq!(i.amount_in.get(), amount_in);
     assert_eq!(i.expect_amount_out.get(), expect_amount_out);
     assert_eq!(i.minimum_amount_out.get(), minimum_amount_out);
+    assert_eq!(i.sqrt_price_limit, None);
   }
 }
