@@ -31,7 +31,7 @@ impl Status {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct SwapInfo {
   /// Initialized state.
   pub is_initialized: u8,

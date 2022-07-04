@@ -61,14 +61,14 @@ pub struct SwapInstruction {
 }
 
 /// Swap instruction data
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SwapInInstruction {
   /// amount of tokens to swap
   pub amount_in: NonZeroU64,
 }
 
 /// Swap instruction data
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SwapOutInstruction {
   /// expect amount of tokens to swap
   pub expect_amount_out: NonZeroU64,
@@ -77,7 +77,7 @@ pub struct SwapOutInstruction {
 }
 
 /// Swap instruction data
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SwapOutSlimInstruction {
   /// Minimum amount of DESTINATION token to output, prevents excessive slippage
   pub minimum_amount_out: NonZeroU64,

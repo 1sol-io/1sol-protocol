@@ -233,6 +233,9 @@ impl Processor {
       ref owner_account,
       ref destination_account,
     ], _) = array_refs![accounts, 3;..;];
+    if !owner_account.is_signer {
+      return Err(ProgramError::IllegalOwner);
+    }
     if Self::cmp_pubkeys(swap_info_account.key, destination_account.key) {
       return Err(ProgramError::InvalidAccountData);
     }
